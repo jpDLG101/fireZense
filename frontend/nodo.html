@@ -1,0 +1,400 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <title>fireZense — Detalle de Nodo</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <link rel="stylesheet" href="vendor/fonts/google-fonts.css" />
+  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="node-detail.css" />
+
+  <script src="vendor/react.development.js"></script>
+  <script src="vendor/react-dom.development.js"></script>
+  <script src="vendor/babel.min.js"></script>
+</head>
+<body data-page="detail">
+  <div id="root"></div>
+
+  <script type="text/babel" src="data.jsx"></script>
+
+  <script type="text/babel">
+      // Read theme from localStorage if user set it on dashboard, else default oscuro
+      const savedTheme = localStorage.getItem("fz-theme") || "oscuro";
+      document.documentElement.setAttribute("data-theme", savedTheme);
+
+    function getNodeId() {
+      const params = new URLSearchParams(window.location.search);
+      return params.get("id");
+    }
+
+    function niceTicks(mn, mx) {
+      const range = mx - mn;
+      if (range === 0) return [mn];
+      const rawStep = range / 4;
+      const mag = Math.pow(10, Math.floor(Math.log10(rawStep || 1)));
+      const step = [1, 2, 2.5, 5, 10].map(c => c * mag).find(c => c >= rawStep) || mag * 10;
+      const start = Math.ceil(mn / step) * step;
+      const ticks = [];
+      for (let v = start; v <= mx + step * 0.01; v += step) {
+        ticks.push(Math.round(v * 1e9) / 1e9);
+      }
+      return ticks;
+    }
+
+    function fmtTick(v, unit) {
+      if (unit === "lux" && Math.abs(v) >= 1000) return (v / 1000).toFixed(1) + "k";
+      if (unit === "dS/m") return v.toFixed(2);
+      return Number.isInteger(v) ? String(v) : v.toFixed(1);
+    }
+
+    function MetricChart({ label, unit, values, hours, color }) {
+      const W = 520, H = 190;
+      const PAD_L = 52, PAD_R = 14, PAD_T = 14, PAD_B = 30;
+      const innerW = W - PAD_L - PAD_R;
+      const innerH = H - PAD_T - PAD_B;
+
+      const mn = Math.min(...values);
+      const mx = Math.max(...values);
+      const range = mx - mn || 1;
+
+      const ticks = niceTicks(mn, mx);
+      const gradId = `mcg-${label.replace(/\W/g, "")}`;
+
+      const points = values.map((v, i) => ({
+        x: PAD_L + (i / (values.length - 1)) * innerW,
+        y: PAD_T + innerH - ((v - mn) / range) * innerH,
+        v,
+        hour: hours[i],
+      }));
+
+      const path = points.map((p, i) => `${i === 0 ? "M" : "L"} ${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(" ");
+      const area = `${path} L ${points[points.length - 1].x.toFixed(1)} ${PAD_T + innerH} L ${points[0].x.toFixed(1)} ${PAD_T + innerH} Z`;
+      const last = points[points.length - 1];
+
+      return (
+        <div className="fzd-metric-chart">
+          <div className="fzd-metric-chart-head">
+            <span className="fzd-metric-chart-label">{label}</span>
+            <span className="fzd-metric-chart-unit" style={{ color }}>{unit}</span>
+          </div>
+          <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" className="fzd-metric-svg">
+            <defs>
+              <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor={color} stopOpacity="0.22" />
+                <stop offset="100%" stopColor={color} stopOpacity="0" />
+              </linearGradient>
+            </defs>
+            {ticks.map((v) => {
+              const y = PAD_T + innerH - ((v - mn) / range) * innerH;
+              return (
+                <g key={v}>
+                  <line x1={PAD_L} y1={y} x2={W - PAD_R} y2={y} className="fz-chart-grid" />
+                  <text x={PAD_L - 6} y={y + 4} className="fz-chart-axis" textAnchor="end">
+                    {fmtTick(v, unit)}
+                  </text>
+                </g>
+              );
+            })}
+            {points.map((p, i) => {
+              if (i % 4 !== 0 && i !== points.length - 1) return null;
+              return (
+                <text key={i} x={p.x} y={H - 8} className="fz-chart-axis" textAnchor="middle">
+                  {p.hour === 0 ? "ahora" : `−${p.hour}h`}
+                </text>
+              );
+            })}
+            <path d={area} fill={`url(#${gradId})`} />
+            <path d={path} fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+            <circle cx={last.x} cy={last.y} r="4" fill={color} />
+            <circle cx={last.x} cy={last.y} r="8" fill="none" stroke={color} strokeOpacity="0.35" strokeWidth="1" />
+          </svg>
+        </div>
+      );
+    }
+
+    function FourCharts({ history }) {
+      const hours = history.map((h) => h.hoursAgo);
+      return (
+        <div className="fzd-4charts">
+          <MetricChart label="Temp. suelo" unit="°C"   values={history.map(h => h.soilTemperature)} hours={hours} color="#DC2626" />
+          <MetricChart label="Humedad suelo" unit="%"  values={history.map(h => h.soilHumidity)}    hours={hours} color="#3b82f6" />
+          <MetricChart label="Iluminación"  unit="lux" values={history.map(h => h.light)}           hours={hours} color="#eab308" />
+          <MetricChart label="Electrocond." unit="dS/m" values={history.map(h => h.ec)}             hours={hours} color="#8b5cf6" />
+        </div>
+      );
+    }
+
+    function StatBlock({ label, value, unit, sub, accent }) {
+      return (
+        <div className="fzd-stat" style={accent ? { borderTopColor: accent } : undefined}>
+          <div className="fzd-stat-label">{label}</div>
+          <div className="fzd-stat-value">
+            {value}
+            {unit && <span className="fzd-stat-unit">{unit}</span>}
+          </div>
+          {sub && <div className="fzd-stat-sub">{sub}</div>}
+        </div>
+      );
+    }
+
+    function Sparkline({ values, color }) {
+      const W = 220, H = 50;
+      const mn = Math.min(...values);
+      const mx = Math.max(...values);
+      const range = mx - mn || 1;
+      const path = values.map((v, i) => {
+        const x = (i / (values.length - 1)) * W;
+        const y = H - ((v - mn) / range) * (H - 4) - 2;
+        return `${i === 0 ? "M" : "L"} ${x.toFixed(1)} ${y.toFixed(1)}`;
+      }).join(" ");
+      return (
+        <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" className="fzd-spark">
+          <path d={path} fill="none" stroke={color} strokeWidth="1.8" strokeLinecap="round" />
+        </svg>
+      );
+    }
+
+    function NodeDetail() {
+      const [node, setNode] = React.useState(null);
+      const [alerts, setAlerts] = React.useState([]);
+      const [loaded, setLoaded] = React.useState(false);
+      const [dismissedAlerts, setDismissedAlerts] = React.useState(() => {
+        try { return new Set(JSON.parse(localStorage.getItem("fz-dismissed-alerts") || "[]")); }
+        catch (_) { return new Set(); }
+      });
+      const [alertPage, setAlertPage] = React.useState(1);
+
+      const handleDismiss = (id) => {
+        setDismissedAlerts((prev) => {
+          const next = new Set(prev);
+          next.add(id);
+          localStorage.setItem("fz-dismissed-alerts", JSON.stringify([...next]));
+          return next;
+        });
+      };
+
+      const handleDismissAll = () => {
+        setDismissedAlerts((prev) => {
+          const next = new Set(prev);
+          alerts.forEach((a) => next.add(a.id));
+          localStorage.setItem("fz-dismissed-alerts", JSON.stringify([...next]));
+          return next;
+        });
+      };
+
+      React.useEffect(() => {
+        (async () => {
+          const [nodes, allAlerts] = await Promise.all([
+            window.fireZenseAPI.getNodes(),
+            window.fireZenseAPI.getAlerts(),
+          ]);
+          const id = getNodeId();
+          const n = nodes.find((x) => x.id === id) || nodes[0];
+          setNode(n);
+          setAlerts(allAlerts.filter((a) => a.nodoId === n.id));
+          setLoaded(true);
+        })();
+      }, []);
+
+      if (!loaded || !node) {
+        return <div className="fzd-loading">Cargando…</div>;
+      }
+
+      const meta = window.fireZenseAPI.RISK_META[node.risk];
+      const first = node.history[0].soilTemperature;
+      const last = node.history[node.history.length - 1].soilTemperature;
+      const delta = +(last - first).toFixed(1);
+      const peak = Math.max(...node.history.map((h) => h.soilTemperature));
+      const tempValues = node.history.map((h) => h.soilTemperature);
+      const humValues = node.history.map((h) => h.soilHumidity);
+      const lightValues = node.history.map((h) => h.light);
+      const ecValues = node.history.map((h) => h.ec);
+      const peakLight = Math.max(...lightValues);
+
+      return (
+        <div className="fzd-page">
+          <header className="fzd-header">
+            <a href="/" className="fzd-back">
+              <span>←</span> VOLVER AL MAPA
+            </a>
+            <div className="fzd-brand">
+              <img src="assets/firezense-logo.png" alt="fireZense" />
+            </div>
+          </header>
+
+          <section className="fzd-hero">
+            <div className="fzd-hero-meta">
+              <div className="fzd-hero-id">{node.id}</div>
+              <h1>{node.name}</h1>
+              <div className="fzd-hero-area">{node.area}</div>
+              <div className="fzd-hero-coords">
+                LAT {node.lat.toFixed(4)}° · LNG {node.lng.toFixed(4)}°
+              </div>
+            </div>
+            <div className="fzd-hero-status">
+              <div className="fz-badge fz-badge-lg" style={{ background: meta.bg, color: meta.textColor }}>
+                RIESGO {meta.label}
+              </div>
+              <div className="fzd-hero-state">
+                <div><b>{node.batterySoil != null ? `${node.batterySoil}%` : "—"}</b><span>BAT. SUELO</span></div>
+                <div><b>{node.batteryLight != null ? `${node.batteryLight}%` : "—"}</b><span>BAT. LUZ</span></div>
+                <div><b>{node.lastSeen} min</b><span>ÚLT. VISTO</span></div>
+              </div>
+            </div>
+          </section>
+
+          <section className="fzd-stats">
+            <StatBlock label="Temp. suelo" value={node.soilTemperature.toFixed(1)} unit="°C" sub={`Δ24h ${delta > 0 ? "+" : ""}${delta}° · pico ${peak.toFixed(1)}°`} accent={meta.color} />
+            <StatBlock label="Humedad del suelo" value={node.soilHumidity.toFixed(1)} unit="%" sub={node.soilHumidity < 20 ? "Vegetación seca" : "Dentro de rango"} accent={meta.color} />
+            <StatBlock label="Iluminación" value={node.light.toFixed(0)} unit="lux" sub={`Pico ${peakLight.toFixed(0)} lux`} accent={meta.color} />
+            <StatBlock label="Electrocond." value={node.ec.toFixed(2)} unit="dS/m" sub={node.ec < 0.3 ? "Suelo muy seco" : node.ec < 0.6 ? "Marginal" : "Normal"} accent={meta.color} />
+          </section>
+
+          <section className="fzd-section">
+            <div className="fzd-section-head">
+              <div>
+                <h2>Series temporales — últimas 24h</h2>
+                <p>Lectura cada hora · transmitido vía LoRaWAN · zona horaria UTC−6</p>
+              </div>
+            </div>
+            <FourCharts history={node.history} />
+          </section>
+
+          <section className="fzd-row">
+            <div className="fzd-card">
+              <div className="fzd-card-head">
+                <h3>Tendencias por variable</h3>
+                <span>24h</span>
+              </div>
+              <div className="fzd-trend">
+                <div className="fzd-trend-row">
+                  <div className="fzd-trend-label">
+                    <b>TEMP. SUELO</b>
+                    <span>{first.toFixed(1)}°C → {last.toFixed(1)}°C</span>
+                  </div>
+                  <Sparkline values={tempValues} color="#DC2626" />
+                </div>
+                <div className="fzd-trend-row">
+                  <div className="fzd-trend-label">
+                    <b>HUMEDAD</b>
+                    <span>{Math.min(...humValues).toFixed(1)}% – {Math.max(...humValues).toFixed(1)}%</span>
+                  </div>
+                  <Sparkline values={humValues} color="#3b82f6" />
+                </div>
+                <div className="fzd-trend-row">
+                  <div className="fzd-trend-label">
+                    <b>LUZ</b>
+                    <span>Pico {Math.max(...lightValues).toFixed(0)} lux</span>
+                  </div>
+                  <Sparkline values={lightValues} color="#eab308" />
+                </div>
+                <div className="fzd-trend-row">
+                  <div className="fzd-trend-label">
+                    <b>ELECTROCOND.</b>
+                    <span>{Math.min(...ecValues).toFixed(2)} – {Math.max(...ecValues).toFixed(2)} dS/m</span>
+                  </div>
+                  <Sparkline values={ecValues} color="#8b5cf6" />
+                </div>
+              </div>
+            </div>
+
+            <div className="fzd-card">
+              {(() => {
+                const PER_PAGE = 3;
+                const visibleAlerts = alerts.filter((a) => !dismissedAlerts.has(a.id));
+                const totalPages = Math.max(1, Math.ceil(visibleAlerts.length / PER_PAGE));
+                const page = Math.min(alertPage, totalPages);
+                const pageAlerts = visibleAlerts.slice((page - 1) * PER_PAGE, page * PER_PAGE);
+                return (
+                  <>
+                    <div className="fzd-card-head">
+                      <h3>Alertas del nodo</h3>
+                      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                        {visibleAlerts.length > 0 && (
+                          <button type="button" className="fzd-btn-dismiss-all" onClick={handleDismissAll}>
+                            Marcar todas como leídas
+                          </button>
+                        )}
+                        <span>{visibleAlerts.length}</span>
+                      </div>
+                    </div>
+                    {visibleAlerts.length === 0 && (
+                      <div className="fzd-empty">Sin alertas pendientes en este nodo.</div>
+                    )}
+                    <div className="fzd-alerts">
+                      {pageAlerts.map((a) => {
+                        const tipoMeta = {
+                          critico:     { label: "CRÍTICO",     bg: "#7f1d1d", border: "#dc2626", text: "#fecaca" },
+                          advertencia: { label: "ADVERTENCIA", bg: "#7c2d12", border: "#ea580c", text: "#fed7aa" },
+                          info:        { label: "INFO",        bg: "transparent", border: "#404040", text: "#a3a3a3" },
+                        }[a.tipo];
+                        return (
+                          <div key={a.id} className="fzd-alert" style={{ background: tipoMeta.bg, borderLeftColor: tipoMeta.border }}>
+                            <div className="fzd-alert-head">
+                              <span style={{ color: tipoMeta.text, borderColor: tipoMeta.border }}>{tipoMeta.label}</span>
+                              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                                <span className="fzd-alert-time">hace {a.hace} min</span>
+                                <button
+                                  type="button"
+                                  className="fzd-alert-dismiss"
+                                  title="Marcar como leída"
+                                  onClick={() => handleDismiss(a.id)}
+                                >✕</button>
+                              </div>
+                            </div>
+                            <div className="fzd-alert-title">{a.titulo}</div>
+                            <div className="fzd-alert-msg">{a.mensaje}</div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    {totalPages > 1 && (
+                      <div className="fzd-pagination">
+                        <button
+                          type="button"
+                          className="fzd-page-btn"
+                          disabled={page <= 1}
+                          onClick={() => setAlertPage(page - 1)}
+                        >←</button>
+                        <span className="fzd-page-info">{page} / {totalPages}</span>
+                        <button
+                          type="button"
+                          className="fzd-page-btn"
+                          disabled={page >= totalPages}
+                          onClick={() => setAlertPage(page + 1)}
+                        >→</button>
+                      </div>
+                    )}
+                  </>
+                );
+              })()}
+            </div>
+          </section>
+
+          <section className="fzd-section">
+            <div className="fzd-section-head">
+              <div>
+                <h2>Especificaciones del sensor</h2>
+                <p>Hardware desplegado</p>
+              </div>
+            </div>
+            <div className="fzd-specs">
+              {node.soilEui  && <div><b>EUI sensor suelo</b><span>{node.soilEui}</span></div>}
+              {node.lightEui && <div><b>EUI sensor luz</b><span>{node.lightEui}</span></div>}
+              <div><b>Coordenadas</b><span>{node.lat.toFixed(4)}, {node.lng.toFixed(4)}</span></div>
+            </div>
+          </section>
+
+          <footer className="fzd-footer">
+            fireZense · Sistema de monitoreo ambiental para detección oportuna de incendios forestales
+          </footer>
+        </div>
+      );
+    }
+
+    const root = ReactDOM.createRoot(document.getElementById("root"));
+    root.render(<NodeDetail />);
+  </script>
+</body>
+</html>

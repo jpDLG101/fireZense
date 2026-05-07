@@ -1,0 +1,262 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <title>fireZense — Monitoreo</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <link rel="stylesheet" href="vendor/maplibre-gl.css" />
+  <script src="vendor/maplibre-gl.js"></script>
+
+  <link rel="stylesheet" href="vendor/fonts/google-fonts.css" />
+  <link rel="stylesheet" href="styles.css" />
+
+  <script src="vendor/react.development.js"></script>
+  <script src="vendor/react-dom.development.js"></script>
+  <script src="vendor/babel.min.js"></script>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel" src="data.jsx"></script>
+  <script type="text/babel" src="tweaks-panel.jsx"></script>
+  <script type="text/babel" src="map-view.jsx"></script>
+  <script type="text/babel" src="side-panel.jsx"></script>
+  <script type="text/babel" src="detail-panel.jsx"></script>
+
+  <script type="text/babel">
+    const TWEAK_DEFAULTS = { "theme": "claro" };
+
+    function FireZenseApp() {
+      const [t, setTweak] = useTweaks(TWEAK_DEFAULTS);
+      const [nodes, setNodes] = React.useState([]);
+      const [alerts, setAlerts] = React.useState([]);
+      const [dismissedAlerts, setDismissedAlerts] = React.useState(() => {
+        try { return new Set(JSON.parse(localStorage.getItem("fz-dismissed-alerts") || "[]")); }
+        catch (_) { return new Set(); }
+      });
+      const [selectedId, setSelectedId] = React.useState(null);
+      const [tab, setTab] = React.useState("nodos");
+      const [loaded, setLoaded] = React.useState(false);
+      const [now, setNow] = React.useState(new Date());
+
+      React.useEffect(() => {
+        document.documentElement.setAttribute("data-theme", t.theme);
+        localStorage.setItem("fz-theme", t.theme);
+      }, [t.theme]);
+
+      const prevTheme = React.useRef(t.theme);
+      React.useEffect(() => {
+        if (prevTheme.current === t.theme) return;
+        prevTheme.current = t.theme;
+        const cur = localStorage.getItem("fz-map-style");
+        if (t.theme === "claro" && cur === "oscuro") {
+          localStorage.setItem("fz-map-style", "claro");
+          window.dispatchEvent(new Event("fz-map-style-change"));
+        } else if (t.theme === "oscuro" && cur === "claro") {
+          localStorage.setItem("fz-map-style", "oscuro");
+          window.dispatchEvent(new Event("fz-map-style-change"));
+        }
+      }, [t.theme]);
+
+      React.useEffect(() => {
+        let alive = true;
+        (async () => {
+          try {
+            const [n, a] = await Promise.all([
+              window.fireZenseAPI.getNodes(),
+              window.fireZenseAPI.getAlerts(),
+            ]);
+            if (!alive) return;
+            setNodes(n);
+            setAlerts(a);
+            setLoaded(true);
+          } catch (e) {
+            console.error("Error cargando datos:", e);
+            if (alive) setLoaded(true);
+          }
+        })();
+
+        // Recargar datos cada 60 segundos
+        const refresh = setInterval(async () => {
+          if (!alive) return;
+          try {
+            const [remapped, remappedAlerts] = await Promise.all([
+              window.fireZenseAPI.getNodes(true),
+              window.fireZenseAPI.getAlerts(true),
+            ]);
+            if (alive) { setNodes(remapped); setAlerts(remappedAlerts); }
+          } catch (_) {}
+        }, 60000);
+
+        return () => { alive = false; clearInterval(refresh); };
+      }, []);
+
+      React.useEffect(() => {
+        const id = setInterval(() => setNow(new Date()), 30000);
+        return () => clearInterval(id);
+      }, []);
+
+
+      const counts = React.useMemo(() => {
+        const c = { critico: 0, alto: 0, medio: 0, bajo: 0 };
+        nodes.forEach((n) => c[n.risk]++);
+        return c;
+      }, [nodes]);
+
+      const handleDismiss = React.useCallback((id) => {
+        setDismissedAlerts((prev) => {
+          const next = new Set(prev);
+          next.add(id);
+          localStorage.setItem("fz-dismissed-alerts", JSON.stringify([...next]));
+          return next;
+        });
+      }, []);
+
+      const handleDismissAll = React.useCallback(() => {
+        setDismissedAlerts((prev) => {
+          const next = new Set(prev);
+          alerts.forEach((a) => next.add(a.id));
+          localStorage.setItem("fz-dismissed-alerts", JSON.stringify([...next]));
+          return next;
+        });
+      }, [alerts]);
+
+      const visibleAlerts = React.useMemo(
+        () => alerts.filter((a) => !dismissedAlerts.has(a.id)),
+        [alerts, dismissedAlerts]
+      );
+
+      const activeAlerts = visibleAlerts.filter((a) => a.tipo === "critico" || a.tipo === "advertencia").length;
+      const selectedNode = nodes.find((n) => n.id === selectedId) || null;
+
+      const onSelect = (id) => {
+        setSelectedId((prev) => {
+          const next = prev === id ? null : id;
+          if (next !== null && tab === "alertas") setTab("nodos");
+          return next;
+        });
+      };
+
+      const { lastSyncStr, lastSyncClass } = React.useMemo(() => {
+        const isos = nodes.map(n => n.lastSeenIso).filter(Boolean);
+        if (!isos.length) return { lastSyncStr: null, lastSyncClass: '' };
+        // SQLite timestamps are UTC without timezone marker — add Z to force correct parsing
+        const parseUTC = s => new Date(s.replace(' ', 'T') + 'Z');
+        const latest = new Date(Math.max(...isos.map(s => parseUTC(s).getTime())));
+        const minAgo = Math.round((Date.now() - latest.getTime()) / 60000);
+        const cls = minAgo < 30 ? '' : minAgo < 120 ? 'dot-yellow' : 'dot-red';
+        const str = latest.toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" });
+        return { lastSyncStr: str, lastSyncClass: cls };
+      }, [nodes, now]);
+
+      return (
+        <div className="fz-app">
+          <header className="fz-topbar">
+            <div className="fz-brand">
+              <img src="assets/firezense-logo.png" alt="fireZense" className="fz-brand-logo" />
+            </div>
+
+            <div className="fz-summary">
+              <div className="fz-acc-red">
+                <b>{counts.critico}</b>
+                <span>Crítico</span>
+              </div>
+              <div className="fz-acc-orange">
+                <b>{counts.alto}</b>
+                <span>Alto</span>
+              </div>
+              <div className="fz-acc-yellow">
+                <b>{counts.medio}</b>
+                <span>Medio</span>
+              </div>
+              <div className="fz-acc-green">
+                <b>{counts.bajo}</b>
+                <span>Bajo</span>
+              </div>
+              <div>
+                <b>{activeAlerts}</b>
+                <span>Alertas activas</span>
+              </div>
+            </div>
+
+            <div className="fz-topright">
+              <div className="fz-legend">
+                <div className="fz-legend-item">
+                  <span className="fz-legend-dot" style={{ background: "#16a34a" }} /> Bajo
+                </div>
+                <div className="fz-legend-item">
+                  <span className="fz-legend-dot" style={{ background: "#eab308" }} /> Medio
+                </div>
+                <div className="fz-legend-item">
+                  <span className="fz-legend-dot" style={{ background: "#ea580c" }} /> Alto
+                </div>
+                <div className="fz-legend-item">
+                  <span className="fz-legend-dot" style={{ background: "#DC2626" }} /> Crítico
+                </div>
+              </div>
+              <div className="fz-conn">
+                <span className={`fz-conn-dot${lastSyncClass ? ' ' + lastSyncClass : ''}`} />
+                <div className="fz-conn-text">
+                  <b>LoRaWAN</b>
+                  <span>{lastSyncStr ? `Última recepción ${lastSyncStr}` : 'Sin transmisiones'}</span>
+                </div>
+              </div>
+            </div>
+          </header>
+
+          <main className="fz-main">
+            <div className="fz-map-wrap">
+              {loaded && nodes.length > 0 && (
+                <MapView
+                  nodes={nodes}
+                  selectedId={selectedId}
+                  onSelect={setSelectedId}
+                  dark={t.theme === "oscuro"}
+                />
+              )}
+              {loaded && nodes.length === 0 && (
+                <div style={{
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  height: "100%", flexDirection: "column", gap: 12,
+                  fontFamily: "var(--fz-mono)", color: "var(--fz-text-faint)",
+                  fontSize: 12, letterSpacing: "0.14em",
+                }}>
+                  <div>SIN NODOS REGISTRADOS</div>
+                  <div style={{ fontSize: 10 }}>Registra un nodo en POST /api/v1/nodes</div>
+                </div>
+              )}
+            </div>
+
+            <SidePanel
+              nodes={nodes}
+              alerts={visibleAlerts}
+              selectedId={selectedId}
+              onSelect={onSelect}
+              tab={tab}
+              setTab={setTab}
+              onDismiss={handleDismiss}
+              onDismissAll={handleDismissAll}
+            />
+
+            {/* DetailPanel eliminado: el popup del mapa cubre esta info */}
+          </main>
+
+          <TweaksPanel title="Tweaks">
+            <TweakSection label="Tema" />
+            <TweakRadio
+              label="Apariencia"
+              value={t.theme}
+              options={["oscuro", "claro"]}
+              onChange={(v) => setTweak("theme", v)}
+            />
+          </TweaksPanel>
+        </div>
+      );
+    }
+
+    const root = ReactDOM.createRoot(document.getElementById("root"));
+    root.render(<FireZenseApp />);
+  </script>
+</body>
+</html>

@@ -1,0 +1,44 @@
+# ─── Python ───────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg-info/
+dist/
+build/
+.Python
+
+# ─── Entorno virtual ──────────────────────────────────────
+venv/
+env/
+backend/venv/
+
+# ─── Base de datos ────────────────────────────────────────
+*.db
+*.db-journal
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+!database/.gitkeep
+
+# ─── Variables de entorno ─────────────────────────────────
+.env
+.env.*
+
+# ─── Logs ─────────────────────────────────────────────────
+*.log
+logs/
+
+# ─── Sistema operativo ────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ─── IDEs y herramientas ──────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+.claude/

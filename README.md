@@ -17,7 +17,7 @@ Usa sensores LoRaWAN Milesight (luz + suelo) conectados a un gateway UG65 para c
 ```bash
 # Clona el repositorio
 git clone <url-del-repo>
-cd reforestar
+cd fireZense
 
 # Mac / Linux — primera vez
 chmod +x START.sh
@@ -149,7 +149,7 @@ Ver `simulator/SIMULATOR.md` para la referencia completa.
 ## Estructura del proyecto
 
 ```
-reforestar/
+fireZense/
 ├── START.sh / START.bat       ← punto de entrada
 ├── simulator/
 │   ├── simulator.py           ← simulador de lecturas IoT

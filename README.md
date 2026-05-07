@@ -56,8 +56,9 @@ Puedes dejarla como está para desarrollo local. Si la cambias, actualiza tambi�
 
 ## 3. Registrar nodos
 
-**Este paso es obligatorio antes de conectar el gateway o correr el simulador.**
-Cada nodo agrupa un sensor de suelo (EM500-SMTC) y un sensor de luz (EM500-LGT915M).
+Al arrancar por primera vez el sistema crea automáticamente **NodoTec** (Chihuahua, MX) con los EUIs de los sensores físicos del proyecto — no necesitas hacer nada para empezar.
+
+Para agregar nodos adicionales usa este curl. Cada nodo agrupa un sensor de suelo (EM500-SMTC) y un sensor de luz (EM500-LGT915M):
 
 ```bash
 curl -X POST http://localhost:8000/api/v1/nodes \
@@ -74,7 +75,6 @@ curl -X POST http://localhost:8000/api/v1/nodes \
 ```
 
 - **`light_eui`** y **`soil_eui`** están impresos en la etiqueta física de cada sensor.
-- Repite el comando por cada nodo del sistema.
 - Verifica los nodos registrados: `curl http://localhost:8000/api/v1/nodes`
 
 ---

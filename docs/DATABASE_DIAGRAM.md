@@ -73,6 +73,8 @@ erDiagram
         TEXT severity
         TEXT message
         REAL value
+        INTEGER is_read
+        TIMESTAMP read_at
         TIMESTAMP created_at
     }
 
@@ -100,8 +102,11 @@ flowchart TD
 
     COMB -- "GREEN 0–19" --> FRE_G["fire_risk_events\nrisk_level=GREEN"]
     COMB -- "YELLOW 20–44" --> FRE_Y["fire_risk_events\nrisk_level=YELLOW"]
-    COMB -- "ORANGE 45–69" --> FRE_O["fire_risk_events\nrisk_level=ORANGE"] --> AW["alerts\nseverity=warning\ncon node_id + coords"]
-    COMB -- "RED 70+" --> FRE_R["fire_risk_events\nrisk_level=RED"] --> AC["alerts\nseverity=critical 🔴\ncon node_id + coords"]
+    COMB -- "ORANGE 45–69" --> FRE_O["fire_risk_events\nrisk_level=ORANGE"] --> CHK{"should_create_alert()\n¿nivel cambió o fue leída?"}
+    COMB -- "RED 70+" --> FRE_R["fire_risk_events\nrisk_level=RED"] --> CHK
+    CHK -- "Sí (transición)" --> AW["alerts\nseverity=warning/critical\nis_read=0"]
+    CHK -- "No (mismo nivel,\nno leída)" --> SKIP["Suprimida\n(sin INSERT)"]
+    CHK -- "RED sin leer\n> 30 min" --> REM["alerts\n[Recordatorio]\nseverity=critical"]
 
     style RAW fill:#e3f2fd,stroke:#1565c0
     style L fill:#fff9c4,stroke:#f9a825
@@ -169,5 +174,14 @@ flowchart TD
 | `node_id` | INTEGER FK | Nodo en alerta (incluye lat/lng al consultar) |
 | `alert_type` | TEXT | `fire_risk_orange` / `fire_risk_red` |
 | `severity` | TEXT | `warning` / `critical` |
-| `message` | TEXT | Descripción legible con emoji y factores |
+| `message` | TEXT | Descripción legible con emoji y factores. Prefijo `[Recordatorio]` en alertas RED periódicas |
 | `value` | REAL | Score que disparó la alerta |
+| `is_read` | INTEGER | `0` = no leída, `1` = leída. El GET filtra solo `is_read=0` por defecto |
+| `read_at` | TIMESTAMP | Momento en que fue marcada como leída (UTC) |
+
+**Lógica de deduplicación (`should_create_alert`):**
+- Sin alertas previas → crear
+- El nivel cambió respecto a la última alerta → crear
+- Mismo nivel, alerta leída → crear nueva después de 15 min desde `read_at`
+- Mismo nivel, no leída, RED → recordatorio cada 30 min
+- Mismo nivel, no leída, ORANGE → suprimir

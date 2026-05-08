@@ -123,8 +123,16 @@ sequenceDiagram
     API->>API: calculate_node_risk() — combina ambos sensores
     API->>DB: INSERT fire_risk_events (node_id)
 
-    alt score ≥ 45
-        API->>DB: INSERT alerts (node_id + coordenadas)
+    alt score ≥ 45 (ORANGE o RED)
+        API->>DB: SELECT última alerta del nodo
+        API->>API: should_create_alert() — ¿nivel cambió o fue leída?
+        alt nueva transición o alerta leída hace > 15 min
+            API->>DB: INSERT alerts (is_read=0)
+        else RED sin leer hace > 30 min
+            API->>DB: INSERT alerts [Recordatorio] (is_read=0)
+        else mismo nivel sin leer
+            Note over API: Alerta suprimida
+        end
     end
 
     API-->>GW: 200 OK
@@ -144,7 +152,8 @@ sequenceDiagram
 | `GET` | `/api/v1/fire-risk/history` | Historial de eventos |
 | `GET` | `/api/v1/readings/light` | Lecturas de luz |
 | `GET` | `/api/v1/readings/soil` | Lecturas de suelo |
-| `GET` | `/api/v1/alerts` | Alertas ORANGE y RED (con coordenadas) |
+| `GET` | `/api/v1/alerts` | Alertas no leídas (ORANGE/RED). `?include_read=true` para ver todas |
+| `PATCH` | `/api/v1/alerts/{id}/read` | Marcar alerta como leída (persiste `read_at`) |
 | `GET` | `/api/v1/stats` | Estadísticas generales |
 
 ## Respuesta del endpoint de mapa `/api/v1/nodes`
@@ -215,5 +224,8 @@ Página completa accesible desde `/nodo.html?id=NODE-001`. Componentes principal
 
 Módulo global (`window.fireZenseAPI`) que expone:
 - `getNodes()` — GET `/api/v1/nodes`, transforma al modelo de UI
-- `getAlerts()` — GET `/api/v1/alerts`, normaliza campos
+- `getAlerts()` — GET `/api/v1/alerts`, normaliza campos (solo no leídas)
+- `dismissAlert(backendId)` — PATCH `/api/v1/alerts/{id}/read`, marca como leída en el backend
 - `RISK_META` — mapa de nivel → color, label, bg para badges y gráficas
+
+**Flujo de dismiss:** al descartar una alerta en la UI, el estado local se actualiza de inmediato (respuesta instantánea) y en paralelo se persiste en el backend vía `dismissAlert()`. En el siguiente refresco (60 s) la alerta ya no regresa desde el servidor.

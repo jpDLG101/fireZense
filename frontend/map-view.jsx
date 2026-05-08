@@ -62,6 +62,7 @@ function MapView({ nodes, selectedId, onSelect, mapStyle: mapStyleProp, dark }) 
   const containerRef = React.useRef(null);
   const mapRef = React.useRef(null);
   const markersRef = React.useRef(new Map());
+  const fittedRef  = React.useRef(false);
   const [ready, setReady] = React.useState(false);
 
   // Internal style state — initialized from localStorage, then user-controlled via in-map UI.
@@ -170,6 +171,21 @@ function MapView({ nodes, selectedId, onSelect, mapStyle: mapStyleProp, dark }) 
         markersRef.current.delete(id);
       }
     });
+
+    // First time nodes arrive: fit the map to show all of them
+    if (!fittedRef.current && nodes.length > 0) {
+      fittedRef.current = true;
+      if (nodes.length === 1) {
+        map.flyTo({ center: [nodes[0].lng, nodes[0].lat], zoom: 13 });
+      } else {
+        const lngs = nodes.map((n) => n.lng);
+        const lats = nodes.map((n) => n.lat);
+        map.fitBounds(
+          [[Math.min(...lngs), Math.min(...lats)], [Math.max(...lngs), Math.max(...lats)]],
+          { padding: 80, maxZoom: 14 }
+        );
+      }
+    }
   }, [nodes, selectedId, ready]);
 
   // Open popup + center on selection. Close every other popup first.

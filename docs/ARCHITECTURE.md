@@ -201,24 +201,26 @@ sequenceDiagram
 
 ### `index.html` — Dashboard principal
 
+**Auto-refresco cada 60 s** — `getNodes()` y `getAlerts()` se llaman en background con un `setInterval`. El reloj de "hace N min" se actualiza cada 30 s. Ninguna de las dos actualizaciones requiere recargar la página.
+
 | Componente | Archivo | Descripción |
 |---|---|---|
 | Mapa interactivo | `map-view.jsx` | Marcadores por nivel de riesgo (GREEN/YELLOW/ORANGE/RED), popups con métricas actuales |
-| Panel lateral | `side-panel.jsx` | Lista de nodos ordenada por riesgo + alertas globales con dismiss |
+| Panel lateral | `side-panel.jsx` | Lista de nodos ordenada por riesgo + alertas globales con dismiss. Resumen de alertas en grid `auto-fit` (3 cols en pestaña Alertas, 4 en Nodos) |
 | Panel inferior | `detail-panel.jsx` | Se abre al seleccionar un nodo: 4 métricas grandes + gráfica de temperatura 24h |
 | Tweaks | `tweaks-panel.jsx` | Selector de tema claro/oscuro y ajustes de visualización |
 
 ### `nodo.html` — Detalle de nodo
 
-Página completa accesible desde `/nodo.html?id=NODE-001`. Componentes principales:
+Página completa accesible desde `/nodo.html?id=NODE-001`. **Auto-refresco cada 60 s** igual que el dashboard: los datos del nodo y sus alertas se actualizan en background sin recargar la página.
 
 | Componente | Descripción |
 |---|---|
 | Hero + estado | Nombre, área, coordenadas, nivel de riesgo, baterías, último visto |
 | 4 métricas grandes | Temp. suelo, Humedad, Iluminación, Electroconductividad (valor actual + contexto) |
-| Series temporales 24h | 4 charts independientes en grid 2×2, cada una con eje Y en unidades reales (`°C`, `%`, `lux`, `dS/m`) |
+| Series temporales 24h | 4 charts SVG en grid 2×2. Al montar (carga inicial y cada refresco automático) cada línea se anima con `stroke-dashoffset` desde la longitud total del path hasta 0 (~0.9 s). El área aparece con fade-in y el punto final aparece al terminar el trazado. |
 | Tendencias por variable | 4 sparklines con rango min→max de las últimas 24h |
-| Alertas del nodo | Lista paginada (3 por página) con dismiss individual y "marcar todas como leídas" |
+| Alertas del nodo | Lista paginada (3 por página) con dismiss individual y "marcar todas como leídas". Estado persistido en el backend (sin localStorage). |
 | Especificaciones | EUIs de sensores y coordenadas GPS |
 
 ### Datos compartidos — `data.jsx`

@@ -33,10 +33,7 @@
       const [t, setTweak] = useTweaks(TWEAK_DEFAULTS);
       const [nodes, setNodes] = React.useState([]);
       const [alerts, setAlerts] = React.useState([]);
-      const [dismissedAlerts, setDismissedAlerts] = React.useState(() => {
-        try { return new Set(JSON.parse(localStorage.getItem("fz-dismissed-alerts") || "[]")); }
-        catch (_) { return new Set(); }
-      });
+      const [dismissedAlerts, setDismissedAlerts] = React.useState(() => new Set());
       const [selectedId, setSelectedId] = React.useState(null);
       const [tab, setTab] = React.useState("nodos");
       const [loaded, setLoaded] = React.useState(false);
@@ -122,9 +119,7 @@
           alerts.forEach((a) => next.add(a.id));
           return next;
         });
-        alerts.forEach((a) => {
-          if (a._backendId) window.fireZenseAPI.dismissAlert(a._backendId);
-        });
+        window.fireZenseAPI.dismissAllAlerts();
       }, [alerts]);
 
       const visibleAlerts = React.useMemo(

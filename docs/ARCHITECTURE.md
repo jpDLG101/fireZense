@@ -153,7 +153,8 @@ sequenceDiagram
 | `GET` | `/api/v1/readings/light` | Lecturas de luz |
 | `GET` | `/api/v1/readings/soil` | Lecturas de suelo |
 | `GET` | `/api/v1/alerts` | Alertas no leídas (ORANGE/RED). `?include_read=true` para ver todas |
-| `PATCH` | `/api/v1/alerts/{id}/read` | Marcar alerta como leída (persiste `read_at`) |
+| `PATCH` | `/api/v1/alerts/{id}/read` | Marcar una alerta como leída (persiste `read_at`) |
+| `PATCH` | `/api/v1/alerts/read-all` | Marcar **todas** las alertas no leídas como leídas de un golpe |
 | `GET` | `/api/v1/stats` | Estadísticas generales |
 
 ## Respuesta del endpoint de mapa `/api/v1/nodes`
@@ -225,7 +226,10 @@ Página completa accesible desde `/nodo.html?id=NODE-001`. Componentes principal
 Módulo global (`window.fireZenseAPI`) que expone:
 - `getNodes()` — GET `/api/v1/nodes`, transforma al modelo de UI
 - `getAlerts()` — GET `/api/v1/alerts`, normaliza campos (solo no leídas)
-- `dismissAlert(backendId)` — PATCH `/api/v1/alerts/{id}/read`, marca como leída en el backend
+- `dismissAlert(backendId)` — PATCH `/api/v1/alerts/{id}/read`, marca una alerta como leída
+- `dismissAllAlerts()` — PATCH `/api/v1/alerts/read-all`, marca **todas** las no leídas como leídas
 - `RISK_META` — mapa de nivel → color, label, bg para badges y gráficas
 
-**Flujo de dismiss:** al descartar una alerta en la UI, el estado local se actualiza de inmediato (respuesta instantánea) y en paralelo se persiste en el backend vía `dismissAlert()`. En el siguiente refresco (60 s) la alerta ya no regresa desde el servidor.
+**Flujo de dismiss individual:** al descartar una alerta en la UI, el estado local se actualiza de inmediato (respuesta instantánea) y en paralelo se persiste en el backend vía `dismissAlert()`. En el siguiente refresco (60 s) la alerta ya no regresa desde el servidor.
+
+**Flujo de dismiss total:** el botón "Marcar todas como leídas" llama a `dismissAllAlerts()`, que ejecuta un único `UPDATE` en la BD marcando todas las alertas no leídas sin importar cuántas haya acumuladas.

@@ -32,6 +32,10 @@ DEFAULT_BASE_URL = "http://localhost:8000"
 API_KEY          = "tu_api_key_local"
 BACKFILL_INTERVAL_SEC = 300  # 5 minutos (igual que el default del simulador)
 
+# Máximo cambio de temperatura por ciclo.
+# Mantiene delta_temp_per_min < 0.5°C/min → sin contribución al score de riesgo.
+MAX_TEMP_STEP = 0.4
+
 RISK_EMOJI = {"GREEN": "🟢", "YELLOW": "🟡", "ORANGE": "🟠", "RED": "🔴"}
 
 # ─── Perfiles de riesgo (rangos estrictos por nivel) ────────────────────────
@@ -80,10 +84,26 @@ PROFILES = {
 }
 
 
+# ─── Estado de temperatura por nodo (suavizado entre ciclos) ────────────────
+
+_last_temp: dict[int, float] = {}
+
+
 # ─── Generadores de datos ────────────────────────────────────────────────────
 
 def _r(lo: float, hi: float, decimals: int = 1) -> float:
     return round(random.uniform(lo, hi), decimals)
+
+
+def _smooth_temp(node_id: int, lo: float, hi: float) -> float:
+    """Temperatura suavizada: máximo MAX_TEMP_STEP °C de cambio por ciclo."""
+    prev = _last_temp.get(node_id)
+    if prev is None:
+        temp = _r(lo, hi)
+    else:
+        temp = _r(max(lo, prev - MAX_TEMP_STEP), min(hi, prev + MAX_TEMP_STEP))
+    _last_temp[node_id] = temp
+    return temp
 
 
 def _is_night(dt: datetime) -> bool:
@@ -91,9 +111,9 @@ def _is_night(dt: datetime) -> bool:
     return local_hour >= 20 or local_hour < 6
 
 
-def gen_soil(profile: dict, battery: int) -> dict:
+def gen_soil(profile: dict, battery: int, node_id: int = 0) -> dict:
     return {
-        "temperature": _r(*profile["soil_temp"]),
+        "temperature": _smooth_temp(node_id, *profile["soil_temp"]),
         "moisture":    _r(*profile["moisture"]),
         "electricity": _r(*profile["ec"]),
         "battery":     battery,
@@ -190,7 +210,7 @@ def run_continuous(base_url: str, node_id: int, profile: dict,
             ts      = now.isoformat()
             battery = random.randint(*profile["battery"])
 
-            soil_obj  = gen_soil(profile, battery)
+            soil_obj  = gen_soil(profile, battery, node_id)
             light_obj = gen_light(profile, battery, now)
 
             try:
@@ -244,7 +264,7 @@ def run_backfill(base_url: str, node_id: int, profile: dict,
         ts    = ts_dt.isoformat()
 
         battery   = random.randint(*profile["battery"])
-        soil_obj  = gen_soil(profile, battery)
+        soil_obj  = gen_soil(profile, battery, node_id)
         light_obj = gen_light(profile, battery, ts_dt)
 
         try:

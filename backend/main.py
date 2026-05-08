@@ -225,6 +225,22 @@ def is_night(timestamp: str) -> bool:
         return False
 
 
+def _parse_utc(ts: str) -> datetime:
+    """Parsea un timestamp a datetime UTC-aware, sin importar si trae zona o no."""
+    dt = datetime.fromisoformat(ts)
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt
+
+
+def _elapsed_minutes(ts: str) -> Optional[float]:
+    """Minutos transcurridos desde ts (UTC). None si no se puede parsear."""
+    try:
+        return (datetime.now(timezone.utc) - _parse_utc(ts)).total_seconds() / 60
+    except Exception:
+        return None
+
+
 def get_delta_temp_per_min(cursor, device_eui: str, current_temp: float) -> Optional[float]:
     """ΔT/min respecto a la última lectura en BD. None si no hay lectura previa."""
     cursor.execute("""
@@ -235,16 +251,11 @@ def get_delta_temp_per_min(cursor, device_eui: str, current_temp: float) -> Opti
     last = cursor.fetchone()
     if not last or last[0] is None:
         return None
-    try:
-        elapsed_min = (
-            datetime.now() - datetime.fromisoformat(last[1])
-        ).total_seconds() / 60
-        if elapsed_min <= 0 or elapsed_min > 60:
-            return None
-        delta = (current_temp - last[0]) / elapsed_min
-        return round(delta, 3) if delta > 0 else None
-    except Exception:
+    elapsed_min = _elapsed_minutes(last[1])
+    if elapsed_min is None or elapsed_min <= 0 or elapsed_min > 60:
         return None
+    delta = (current_temp - last[0]) / elapsed_min
+    return round(delta, 3) if delta > 0 else None
 
 
 def should_create_alert(cursor, node_id: int, new_level: str) -> tuple[bool, str]:
@@ -272,25 +283,22 @@ def should_create_alert(cursor, node_id: int, new_level: str) -> tuple[bool, str
     if last_level != new_level:
         return True, "transition"
 
+    # Guard: evita duplicados del ciclo soil+light (ambas lecturas llegan en segundos)
+    elapsed_since_last = _elapsed_minutes(last_created_at)
+    if elapsed_since_last is not None and elapsed_since_last < 1:
+        return False, ""
+
     if is_read:
-        ref = read_at or last_created_at
-        try:
-            elapsed_min = (datetime.now() - datetime.fromisoformat(ref)).total_seconds() / 60
-            if elapsed_min >= READ_COOLDOWN_MINUTES:
-                return True, "transition"
-        except Exception:
+        ref     = read_at or last_created_at
+        elapsed = _elapsed_minutes(ref)
+        if elapsed is None or elapsed >= READ_COOLDOWN_MINUTES:
             return True, "transition"
         return False, ""
 
     if new_level == "RED":
-        try:
-            elapsed_min = (
-                datetime.now() - datetime.fromisoformat(last_created_at)
-            ).total_seconds() / 60
-            if elapsed_min >= RED_REMINDER_MINUTES:
-                return True, "reminder"
-        except Exception:
-            pass
+        elapsed = _elapsed_minutes(last_created_at)
+        if elapsed is not None and elapsed >= RED_REMINDER_MINUTES:
+            return True, "reminder"
 
     return False, ""
 
@@ -1017,6 +1025,21 @@ async def mark_alert_read(alert_id: int):
     conn.commit()
     conn.close()
     return {"success": True, "alert_id": alert_id}
+
+
+@app.patch("/api/v1/alerts/read-all")
+async def mark_all_alerts_read():
+    """Marca TODAS las alertas no leídas como leídas."""
+    now = datetime.now(timezone.utc).isoformat()
+    conn   = sqlite3.connect(DATABASE)
+    cursor = conn.cursor()
+    cursor.execute(
+        "UPDATE alerts SET is_read=1, read_at=? WHERE is_read=0", (now,)
+    )
+    updated = cursor.rowcount
+    conn.commit()
+    conn.close()
+    return {"success": True, "marked_read": updated}
 
 
 @app.get("/api/v1/stats", tags=["Sistema"])

@@ -616,6 +616,8 @@ button { font-family: inherit; cursor: pointer; }
   line-height: 1.45;
   color: var(--fz-text-dim);
 }
+.fz-alert[data-tipo="critico"] .fz-alert-title,
+.fz-alert[data-tipo="advertencia"] .fz-alert-title { color: #fff; }
 .fz-alert[data-tipo="critico"] .fz-alert-msg,
 .fz-alert[data-tipo="advertencia"] .fz-alert-msg { color: rgba(255,255,255,.85); }
 .fz-alert-foot {

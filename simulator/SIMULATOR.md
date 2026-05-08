@@ -117,8 +117,7 @@ Salida en pantalla:
 
 ## Niveles de riesgo y rangos de datos
 
-Cada nivel genera valores aleatorios estrictamente dentro del rango indicado.
-Los rangos están calibrados para que el motor de riesgo del backend devuelva siempre el nivel correcto.
+Cada nivel genera valores dentro del rango indicado. La **temperatura de suelo se suaviza entre ciclos** (máximo ±0.4 °C por lectura) para evitar que el cálculo de `delta_temp_per_min` produzca picos artificiales que empujen el nivel de riesgo fuera del perfil elegido. Los demás campos (humedad, EC, lux) se generan de forma aleatoria dentro de su rango en cada ciclo.
 
 ### GREEN — Normal
 | Sensor | Campo | Rango |

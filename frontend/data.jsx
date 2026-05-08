@@ -178,6 +178,12 @@ async function dismissAlert(backendId) {
   } catch (_) {}
 }
 
+async function dismissAllAlerts() {
+  try {
+    await fetch(`${API_BASE}/alerts/read-all`, { method: "PATCH" });
+  } catch (_) {}
+}
+
 // ── Public API ────────────────────────────────────────────────────────────────
 
 window.fireZenseAPI = {
@@ -186,6 +192,7 @@ window.fireZenseAPI = {
     const nodes = await getNodes(force);
     return fetchAlerts(nodes);
   },
-  async dismissAlert(backendId) { return dismissAlert(backendId); },
+  async dismissAlert(backendId)  { return dismissAlert(backendId); },
+  async dismissAllAlerts()       { return dismissAllAlerts(); },
   RISK_META,
 };

@@ -182,6 +182,7 @@ flowchart TD
 **Lógica de deduplicación (`should_create_alert`):**
 - Sin alertas previas → crear
 - El nivel cambió respecto a la última alerta → crear
+- Mismo nivel, última alerta creada hace < 1 min → suprimir (guard anti-duplicados soil+light)
 - Mismo nivel, alerta leída → crear nueva después de 15 min desde `read_at`
 - Mismo nivel, no leída, RED → recordatorio cada 30 min
 - Mismo nivel, no leída, ORANGE → suprimir

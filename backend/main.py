@@ -20,6 +20,8 @@ import sqlite3
 API_KEY  = "tu_api_key_local"
 DATABASE = str(Path(__file__).parent.parent / "database" / "monitoreo_forestal.db")
 MEXICO_OFFSET = timedelta(hours=-6)
+RED_REMINDER_MINUTES  = 30
+READ_COOLDOWN_MINUTES = 15
 
 # =====================================================================
 # APLICACIÓN
@@ -142,10 +144,18 @@ def init_database():
             severity   TEXT,
             message    TEXT,
             value      REAL,
+            is_read    INTEGER DEFAULT 0,
+            read_at    TIMESTAMP,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (node_id) REFERENCES nodes(id)
         )
     """)
+    # Migración para bases de datos existentes
+    for col, definition in [("is_read", "INTEGER DEFAULT 0"), ("read_at", "TIMESTAMP")]:
+        try:
+            cursor.execute(f"ALTER TABLE alerts ADD COLUMN {col} {definition}")
+        except Exception:
+            pass
 
     cursor.execute("SELECT COUNT(*) FROM nodes")
     if cursor.fetchone()[0] == 0:
@@ -201,6 +211,54 @@ def get_delta_temp_per_min(cursor, device_eui: str, current_temp: float) -> Opti
         return round(delta, 3) if delta > 0 else None
     except Exception:
         return None
+
+
+def should_create_alert(cursor, node_id: int, new_level: str) -> tuple[bool, str]:
+    """Decide si insertar una alerta nueva.
+
+    Reglas:
+    - Sin alertas previas          → crear (transition)
+    - Nivel cambió                 → crear (transition)
+    - Mismo nivel, ya leída        → crear después de READ_COOLDOWN_MINUTES desde read_at (transition)
+    - Mismo nivel, no leída, RED   → crear después de RED_REMINDER_MINUTES desde created_at (reminder)
+    - Mismo nivel, no leída, otros → suprimir
+    """
+    cursor.execute("""
+        SELECT alert_type, created_at, is_read, read_at FROM alerts
+        WHERE node_id = ? ORDER BY created_at DESC LIMIT 1
+    """, (node_id,))
+    last = cursor.fetchone()
+
+    if last is None:
+        return True, "transition"
+
+    last_level, last_created_at, is_read, read_at = last
+    last_level = last_level.split("_")[-1].upper()  # "fire_risk_orange" → "ORANGE"
+
+    if last_level != new_level:
+        return True, "transition"
+
+    if is_read:
+        ref = read_at or last_created_at
+        try:
+            elapsed_min = (datetime.now() - datetime.fromisoformat(ref)).total_seconds() / 60
+            if elapsed_min >= READ_COOLDOWN_MINUTES:
+                return True, "transition"
+        except Exception:
+            return True, "transition"
+        return False, ""
+
+    if new_level == "RED":
+        try:
+            elapsed_min = (
+                datetime.now() - datetime.fromisoformat(last_created_at)
+            ).total_seconds() / 60
+            if elapsed_min >= RED_REMINDER_MINUTES:
+                return True, "reminder"
+        except Exception:
+            pass
+
+    return False, ""
 
 
 def lookup_node(cursor, device_eui: str) -> tuple[Optional[int], Optional[str]]:
@@ -630,16 +688,19 @@ async def simulate_uplink(payload: SimulatePayload, x_api_key: str = Header(None
                   ", ".join(risk["factors"]) or "ninguno", delta, sensor_type))
 
             if risk["risk_level"] in ("ORANGE", "RED"):
-                severity = "critical" if risk["risk_level"] == "RED" else "warning"
-                cursor.execute("""
-                    INSERT INTO alerts
-                    (node_id, device_eui, alert_type, severity, message, value)
-                    VALUES (?, ?, ?, ?, ?, ?)
-                """, (node_id, device_eui,
-                      f"fire_risk_{risk['risk_level'].lower()}",
-                      severity,
-                      f"{risk['emoji']} {risk['label']}: {', '.join(risk['factors'])}",
-                      risk["risk_score"]))
+                alert_ok, reason = should_create_alert(cursor, node_id, risk["risk_level"])
+                if alert_ok:
+                    severity = "critical" if risk["risk_level"] == "RED" else "warning"
+                    prefix   = "[Recordatorio] " if reason == "reminder" else ""
+                    cursor.execute("""
+                        INSERT INTO alerts
+                        (node_id, device_eui, alert_type, severity, message, value)
+                        VALUES (?, ?, ?, ?, ?, ?)
+                    """, (node_id, device_eui,
+                          f"fire_risk_{risk['risk_level'].lower()}",
+                          severity,
+                          f"{prefix}{risk['emoji']} {risk['label']}: {', '.join(risk['factors'])}",
+                          risk["risk_score"]))
 
             risk_info = {
                 "risk_level": risk["risk_level"],
@@ -793,16 +854,19 @@ async def receive_uplink(
                   + (f": {', '.join(risk['factors'])}" if risk["factors"] else ""))
 
             if risk["risk_level"] in ("ORANGE", "RED"):
-                severity = "critical" if risk["risk_level"] == "RED" else "warning"
-                cursor.execute("""
-                    INSERT INTO alerts
-                    (node_id, device_eui, alert_type, severity, message, value)
-                    VALUES (?, ?, ?, ?, ?, ?)
-                """, (node_id, device_eui,
-                      f"fire_risk_{risk['risk_level'].lower()}",
-                      severity,
-                      f"{risk['emoji']} {risk['label']}: {', '.join(risk['factors'])}",
-                      risk["risk_score"]))
+                alert_ok, reason = should_create_alert(cursor, node_id, risk["risk_level"])
+                if alert_ok:
+                    severity = "critical" if risk["risk_level"] == "RED" else "warning"
+                    prefix   = "[Recordatorio] " if reason == "reminder" else ""
+                    cursor.execute("""
+                        INSERT INTO alerts
+                        (node_id, device_eui, alert_type, severity, message, value)
+                        VALUES (?, ?, ?, ?, ?, ?)
+                    """, (node_id, device_eui,
+                          f"fire_risk_{risk['risk_level'].lower()}",
+                          severity,
+                          f"{prefix}{risk['emoji']} {risk['label']}: {', '.join(risk['factors'])}",
+                          risk["risk_score"]))
 
         conn.commit()
         print(f"{'='*60}\n")
@@ -889,18 +953,36 @@ async def get_soil_readings(limit: int = 10):
 
 
 @app.get("/api/v1/alerts")
-async def get_alerts(limit: int = 20):
+async def get_alerts(limit: int = 20, include_read: bool = False):
     conn = sqlite3.connect(DATABASE)
     conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
-    cursor.execute("""
+    where = "" if include_read else "WHERE a.is_read = 0"
+    cursor.execute(f"""
         SELECT a.*, n.name as node_name, n.latitude, n.longitude
         FROM alerts a LEFT JOIN nodes n ON a.node_id = n.id
+        {where}
         ORDER BY a.created_at DESC LIMIT ?
     """, (limit,))
     rows = cursor.fetchall()
     conn.close()
     return {"count": len(rows), "alerts": [dict(r) for r in rows]}
+
+
+@app.patch("/api/v1/alerts/{alert_id}/read")
+async def mark_alert_read(alert_id: int):
+    conn    = sqlite3.connect(DATABASE)
+    cursor  = conn.cursor()
+    cursor.execute(
+        "UPDATE alerts SET is_read=1, read_at=? WHERE id=?",
+        (datetime.now(timezone.utc).isoformat(), alert_id),
+    )
+    if cursor.rowcount == 0:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Alerta no encontrada")
+    conn.commit()
+    conn.close()
+    return {"success": True, "alert_id": alert_id}
 
 
 @app.get("/api/v1/stats")

@@ -38,10 +38,12 @@ function buildHistory(soilHistory, lightHistory) {
   return soil.map((s, i) => {
     const lux = (light[i] || {}).light_lux ?? 0;
     const ecRaw = s.electrical_conductivity_us_cm;
-    const ts = new Date(s.received_at || s.timestamp || now);
+    const rawTs = s.received_at || s.timestamp;
+    const ts = rawTs ? parseUTC(rawTs) : new Date(now);
     const hoursAgo = Math.round((now - ts.getTime()) / 3600000);
     return {
       hoursAgo:        Math.max(0, hoursAgo),
+      timestamp:       ts.getTime(),
       soilTemperature: s.soil_temperature_celsius   ?? 25,
       soilHumidity:    s.soil_moisture_percent      ?? 50,
       light:           lux,
@@ -62,6 +64,7 @@ function syntheticHistory(node) {
     const noise = Math.sin(h * 7.3 + lat) * 0.5;
     history.push({
       hoursAgo:        h,
+      timestamp:       Date.now() - h * 3600000,
       soilTemperature: +(baseT - 4 + sun * 8 + noise).toFixed(1),
       soilHumidity:    +Math.max(0, baseH + noise - sun).toFixed(1),
       light:           Math.round(Math.max(0, baseL * sun)),
@@ -145,6 +148,7 @@ async function fetchAlerts(nodes) {
                : "info";
     return {
       id:          `ALT-${String(a.id).padStart(4, "0")}`,
+      _backendId:  a.id,
       tipo,
       titulo:      alertTitle(a.alert_type),
       mensaje:     a.message.replace(/^[🟠🔴]\s*/, ""),
@@ -168,6 +172,12 @@ function getNodes(force = false) {
   return _nodesPromise;
 }
 
+async function dismissAlert(backendId) {
+  try {
+    await fetch(`${API_BASE}/alerts/${backendId}/read`, { method: "PATCH" });
+  } catch (_) {}
+}
+
 // ── Public API ────────────────────────────────────────────────────────────────
 
 window.fireZenseAPI = {
@@ -176,5 +186,6 @@ window.fireZenseAPI = {
     const nodes = await getNodes(force);
     return fetchAlerts(nodes);
   },
+  async dismissAlert(backendId) { return dismissAlert(backendId); },
   RISK_META,
 };

@@ -108,17 +108,20 @@
         setDismissedAlerts((prev) => {
           const next = new Set(prev);
           next.add(id);
-          localStorage.setItem("fz-dismissed-alerts", JSON.stringify([...next]));
           return next;
         });
-      }, []);
+        const alert = alerts.find((a) => a.id === id);
+        if (alert?._backendId) window.fireZenseAPI.dismissAlert(alert._backendId);
+      }, [alerts]);
 
       const handleDismissAll = React.useCallback(() => {
         setDismissedAlerts((prev) => {
           const next = new Set(prev);
           alerts.forEach((a) => next.add(a.id));
-          localStorage.setItem("fz-dismissed-alerts", JSON.stringify([...next]));
           return next;
+        });
+        alerts.forEach((a) => {
+          if (a._backendId) window.fireZenseAPI.dismissAlert(a._backendId);
         });
       }, [alerts]);
 

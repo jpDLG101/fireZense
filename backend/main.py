@@ -30,7 +30,41 @@ READ_COOLDOWN_MINUTES = 15
 app = FastAPI(
     title="Detección de Incendios Forestales IoT",
     description="Sistema multi-nodo — Milesight UG65 + EM500-SMTC + EM500-LGT915M",
-    version="5.0.0"
+    version="5.0.0",
+    openapi_tags=[
+        {
+            "name": "Nodos",
+            "description": "Gestión de nodos de monitoreo (tabla `nodes`).",
+        },
+        {
+            "name": "LoRaWAN / Gateway",
+            "description": "Recepción de uplinks reales desde el gateway Milesight UG65 (tabla `lorawan_transmissions`).",
+        },
+        {
+            "name": "Simulador",
+            "description": "Envío de uplinks sintéticos para pruebas (inserta en `lorawan_transmissions`, `light_readings` o `soil_readings`).",
+        },
+        {
+            "name": "Lecturas de Luz",
+            "description": "Historial de lecturas del sensor EM500-LGT915M (tabla `light_readings`).",
+        },
+        {
+            "name": "Lecturas de Suelo",
+            "description": "Historial de lecturas del sensor EM500-SMTC (tabla `soil_readings`).",
+        },
+        {
+            "name": "Riesgo de Incendio",
+            "description": "Evaluación y historial de riesgo calculado (tabla `fire_risk_events`).",
+        },
+        {
+            "name": "Alertas",
+            "description": "Alertas activas y gestión de estado de lectura (tabla `alerts`).",
+        },
+        {
+            "name": "Sistema",
+            "description": "Estado del servicio y estadísticas generales.",
+        },
+    ],
 )
 
 app.add_middleware(
@@ -446,7 +480,7 @@ def calculate_node_risk(cursor, node_id: int,
 # ENDPOINTS — NODOS
 # =====================================================================
 
-@app.post("/api/v1/nodes", status_code=201)
+@app.post("/api/v1/nodes", status_code=201, tags=["Nodos"])
 async def create_node(node: NodeCreate, x_api_key: str = Header(None)):
     """Registrar un nuevo nodo con coordenadas y EUIs de sus sensores."""
     if x_api_key != API_KEY:
@@ -468,7 +502,7 @@ async def create_node(node: NodeCreate, x_api_key: str = Header(None)):
             "latitude": node.latitude, "longitude": node.longitude}
 
 
-@app.get("/api/v1/nodes")
+@app.get("/api/v1/nodes", tags=["Nodos"])
 async def get_nodes():
     """Todos los nodos activos con riesgo actual — endpoint principal del mapa."""
     conn   = sqlite3.connect(DATABASE)
@@ -540,7 +574,7 @@ async def get_nodes():
     return {"count": len(result), "nodes": result}
 
 
-@app.get("/api/v1/nodes/{node_id}")
+@app.get("/api/v1/nodes/{node_id}", tags=["Nodos"])
 async def get_node(node_id: int):
     """Detalle de un nodo: info + últimas lecturas + historial de riesgo."""
     conn   = sqlite3.connect(DATABASE)
@@ -579,7 +613,7 @@ async def get_node(node_id: int):
     }
 
 
-@app.delete("/api/v1/nodes/{node_id}")
+@app.delete("/api/v1/nodes/{node_id}", tags=["Nodos"])
 async def deactivate_node(node_id: int, x_api_key: str = Header(None)):
     """Desactivar un nodo (no lo borra, solo lo marca inactivo)."""
     if x_api_key != API_KEY:
@@ -602,7 +636,7 @@ class SimulatePayload(BaseModel):
     timestamp: Optional[str] = None
 
 
-@app.post("/api/v1/simulate/uplink")
+@app.post("/api/v1/simulate/uplink", tags=["Simulador"])
 async def simulate_uplink(payload: SimulatePayload, x_api_key: str = Header(None)):
     """Uplink de simulación — acepta node_id explícito y timestamp opcional para backfill."""
     if x_api_key != API_KEY:
@@ -732,7 +766,7 @@ async def simulate_uplink(payload: SimulatePayload, x_api_key: str = Header(None
 # ENDPOINT — UPLINK GATEWAY (formato Milesight UG65 / ChirpStack)
 # =====================================================================
 
-@app.post("/api/v1/lorawan/uplink")
+@app.post("/api/v1/lorawan/uplink", tags=["LoRaWAN / Gateway"])
 async def receive_uplink(
     payload: dict = Body(...),
     x_api_key: str = Header(None),
@@ -884,13 +918,13 @@ async def receive_uplink(
 # ENDPOINTS — LECTURAS, ALERTAS Y STATS
 # =====================================================================
 
-@app.get("/api/v1/health")
+@app.get("/api/v1/health", tags=["Sistema"])
 async def health():
     return {"status": "ok", "service": "Detección de Incendios Forestales IoT",
             "version": "5.0.0", "timestamp": datetime.now().isoformat()}
 
 
-@app.get("/api/v1/fire-risk/current")
+@app.get("/api/v1/fire-risk/current", tags=["Riesgo de Incendio"])
 async def get_current_fire_risk():
     conn = sqlite3.connect(DATABASE)
     conn.row_factory = sqlite3.Row
@@ -907,7 +941,7 @@ async def get_current_fire_risk():
     return {"count": len(rows), "fire_risk": [dict(r) for r in rows]}
 
 
-@app.get("/api/v1/fire-risk/history")
+@app.get("/api/v1/fire-risk/history", tags=["Riesgo de Incendio"])
 async def get_fire_risk_history(limit: int = 50):
     conn = sqlite3.connect(DATABASE)
     conn.row_factory = sqlite3.Row
@@ -922,7 +956,7 @@ async def get_fire_risk_history(limit: int = 50):
     return {"count": len(rows), "history": [dict(r) for r in rows]}
 
 
-@app.get("/api/v1/readings/light")
+@app.get("/api/v1/readings/light", tags=["Lecturas de Luz"])
 async def get_light_readings(limit: int = 10):
     conn = sqlite3.connect(DATABASE)
     conn.row_factory = sqlite3.Row
@@ -937,7 +971,7 @@ async def get_light_readings(limit: int = 10):
     return {"count": len(rows), "readings": [dict(r) for r in rows]}
 
 
-@app.get("/api/v1/readings/soil")
+@app.get("/api/v1/readings/soil", tags=["Lecturas de Suelo"])
 async def get_soil_readings(limit: int = 10):
     conn = sqlite3.connect(DATABASE)
     conn.row_factory = sqlite3.Row
@@ -952,7 +986,7 @@ async def get_soil_readings(limit: int = 10):
     return {"count": len(rows), "readings": [dict(r) for r in rows]}
 
 
-@app.get("/api/v1/alerts")
+@app.get("/api/v1/alerts", tags=["Alertas"])
 async def get_alerts(limit: int = 20, include_read: bool = False):
     conn = sqlite3.connect(DATABASE)
     conn.row_factory = sqlite3.Row
@@ -969,7 +1003,7 @@ async def get_alerts(limit: int = 20, include_read: bool = False):
     return {"count": len(rows), "alerts": [dict(r) for r in rows]}
 
 
-@app.patch("/api/v1/alerts/{alert_id}/read")
+@app.patch("/api/v1/alerts/{alert_id}/read", tags=["Alertas"])
 async def mark_alert_read(alert_id: int):
     conn    = sqlite3.connect(DATABASE)
     cursor  = conn.cursor()
@@ -985,7 +1019,7 @@ async def mark_alert_read(alert_id: int):
     return {"success": True, "alert_id": alert_id}
 
 
-@app.get("/api/v1/stats")
+@app.get("/api/v1/stats", tags=["Sistema"])
 async def get_stats():
     conn = sqlite3.connect(DATABASE)
     cursor = conn.cursor()

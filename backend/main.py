@@ -12,14 +12,27 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
 import sqlite3
+import os
+import requests
+from dotenv import load_dotenv
 
 # =====================================================================
 # CONFIGURACIÓN
 # =====================================================================
 
+# Cargar variables de entorno
+load_dotenv(Path(__file__).parent.parent / ".env")
+
 API_KEY  = "tu_api_key_local"
 DATABASE = str(Path(__file__).parent.parent / "database" / "monitoreo_forestal.db")
 MEXICO_OFFSET = timedelta(hours=-6)
+
+# Configuración de WhatsApp desde .env
+WHATSAPP_ENABLED = os.getenv("WHATSAPP_ENABLED", "false").lower() == "true"
+WHATSAPP_TOKEN = os.getenv("WHATSAPP_TOKEN", "")
+WHATSAPP_PHONE_ID = os.getenv("WHATSAPP_PHONE_ID", "")
+WHATSAPP_TO_PHONE = os.getenv("WHATSAPP_TO_PHONE", "")
+WHATSAPP_API_VERSION = os.getenv("WHATSAPP_API_VERSION", "v25.0")
 
 # =====================================================================
 # APLICACIÓN
@@ -50,6 +63,13 @@ class NodeCreate(BaseModel):
     light_eui: Optional[str] = None
     soil_eui:  Optional[str] = None
     description: Optional[str] = None
+
+
+class AlertWhatsApp(BaseModel):
+    """Modelo para enviar alertas por WhatsApp"""
+    node_name: str
+    message: str
+    severity: str  # "critical", "warning", etc.
 
 # =====================================================================
 # BASE DE DATOS
@@ -179,6 +199,66 @@ def is_night(timestamp: str) -> bool:
         return local_hour >= 20 or local_hour < 6
     except Exception:
         return False
+
+
+def send_whatsapp_alert(message: str) -> dict:
+    """
+    Envía un mensaje de alerta por WhatsApp usando la API de Meta.
+    
+    Args:
+        message: Texto del mensaje a enviar
+    
+    Returns:
+        dict con status, success y detalles de la respuesta
+    """
+    if not WHATSAPP_ENABLED:
+        return {"success": False, "status": "WhatsApp disabled", "message": "WhatsApp está deshabilitado"}
+    
+    if not all([WHATSAPP_TOKEN, WHATSAPP_PHONE_ID, WHATSAPP_TO_PHONE]):
+        return {"success": False, "status": "Missing config", "message": "Faltan variables en .env"}
+    
+    try:
+        url = f"https://graph.facebook.com/{WHATSAPP_API_VERSION}/{WHATSAPP_PHONE_ID}/messages"
+        
+        headers = {
+            "Authorization": f"Bearer {WHATSAPP_TOKEN}",
+            "Content-Type": "application/json"
+        }
+        
+        payload = {
+            "messaging_product": "whatsapp",
+            "to": WHATSAPP_TO_PHONE,
+            "type": "text",
+            "text": {
+                "body": message
+            }
+        }
+        
+        response = requests.post(url, json=payload, headers=headers, timeout=10)
+        
+        if response.status_code in (200, 201):
+            print(f"✓ WhatsApp enviado: {message[:50]}...")
+            return {
+                "success": True,
+                "status": "sent",
+                "message": "Mensaje enviado",
+                "details": response.json()
+            }
+        else:
+            print(f"✗ Error WhatsApp ({response.status_code}): {response.text}")
+            return {
+                "success": False,
+                "status": f"error_{response.status_code}",
+                "message": f"Error {response.status_code}",
+                "details": response.text
+            }
+    
+    except requests.exceptions.Timeout:
+        print("✗ Timeout en WhatsApp")
+        return {"success": False, "status": "timeout", "message": "Timeout en la solicitud"}
+    except Exception as e:
+        print(f"✗ Error WhatsApp: {e}")
+        return {"success": False, "status": "error", "message": str(e)}
 
 
 def get_delta_temp_per_min(cursor, device_eui: str, current_temp: float) -> Optional[float]:
@@ -819,6 +899,36 @@ async def receive_uplink(
 # =====================================================================
 # ENDPOINTS — LECTURAS, ALERTAS Y STATS
 # =====================================================================
+
+@app.post("/api/v1/send-alert")
+async def send_alert(alert: AlertWhatsApp):
+    """
+    Envía un mensaje de alerta por WhatsApp.
+    Llamado desde el frontend cuando se detecta incendio crítico.
+    
+    Body:
+    {
+        "node_name": "NodoTec",
+        "message": "🔴 INCENDIO POSIBLE — alerta crítica: ...",
+        "severity": "critical"
+    }
+    """
+    print(f"\n{'='*60}")
+    print(f"🚨 ALERTA WHATSAPP RECIBIDA DEL FRONTEND")
+    print(f"   Nodo: {alert.node_name}")
+    print(f"   Severidad: {alert.severity}")
+    print(f"   Mensaje: {alert.message[:60]}...")
+    print(f"{'='*60}")
+    
+    result = send_whatsapp_alert(alert.message)
+    
+    return {
+        "success": result["success"],
+        "status": result["status"],
+        "message": result["message"],
+        "timestamp": datetime.now().isoformat()
+    }
+
 
 @app.get("/api/v1/health")
 async def health():

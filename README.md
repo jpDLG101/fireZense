@@ -41,13 +41,38 @@ INFO:     Uvicorn running on http://0.0.0.0:8000
 
 ## 2. Configuración
 
-El archivo `backend/.env` contiene las variables de entorno:
+El archivo `.env` contiene las variables de entorno:
 
 ```env
 API_KEY=tu_api_key_local
 DATABASE=../database/monitoreo_forestal.db
 ENVIRONMENT=local
 ```
+
+### Integración de WhatsApp (Alertas automáticas)
+
+Configura estas variables en `.env` para recibir alertas por WhatsApp cuando se detecte riesgo crítico:
+
+```env
+# Meta WhatsApp Business API
+WHATSAPP_ENABLED=true
+WHATSAPP_TOKEN=tu_bearer_token_de_meta
+WHATSAPP_PHONE_ID=tu_phone_number_id
+WHATSAPP_TO_PHONE=526361302743
+WHATSAPP_API_VERSION=v25.0
+```
+
+**Instrucciones:**
+1. Regístrate en [Meta Developers](https://developers.facebook.com)
+2. Crea una aplicación WhatsApp Business
+3. Obtén el **Bearer Token** y **Phone Number ID**
+4. Pega las credenciales en `.env`
+5. Reinicia el servidor
+
+**Comportamiento:**
+- Cuando se detecta riesgo **CRÍTICO (RED)**, se envía automáticamente un mensaje de WhatsApp
+- En el panel de detalles, aparece un botón "📱 ENVIAR ALERTA WHATSAPP" para enviar manualmente
+- El mensaje incluye: nombre del nodo, temperatura, humedad e iluminación
 
 **`API_KEY`** — clave que protege los endpoints de escritura (uplink del gateway y registro de nodos).
 Puedes dejarla como está para desarrollo local. Si la cambias, actualiza también el header `X-API-Key` en la configuración del gateway.

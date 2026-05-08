@@ -8,6 +8,30 @@ function fmtHour(hoursAgo) {
   return `${String(d.getHours()).padStart(2, "0")}:00`;
 }
 
+// Enviar alerta por WhatsApp al backend
+async function sendWhatsAppAlert(nodeName, riskLevel, message) {
+  try {
+    const payload = {
+      node_name: nodeName,
+      message: message,
+      severity: riskLevel === "critico" ? "critical" : "warning",
+    };
+
+    const res = await fetch("/api/v1/send-alert", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+
+    const data = await res.json();
+    console.log("✓ Alerta enviada:", data);
+    return data.success;
+  } catch (err) {
+    console.error("✗ Error enviando alerta:", err);
+    return false;
+  }
+}
+
 function SoilTempChart({ history, riskColor }) {
   const W = 720;
   const H = 180;
@@ -98,6 +122,20 @@ function DetailPanel({ node, onClose }) {
   const peak = Math.max(...node.history.map((h) => h.soilTemperature));
   const peakLight = Math.max(...node.history.map((h) => h.light));
 
+  // Efecto para enviar alerta automática si es crítico
+  React.useEffect(() => {
+    if (node.risk === "critico") {
+      const alertMessage = `🔴 ALERTA CRÍTICA DE INCENDIO\n\nNodo: ${node.name}\nTemperatura: ${node.soilTemperature.toFixed(1)}°C\nHumedad: ${node.soilHumidity.toFixed(1)}%\nIluminación: ${node.light.toFixed(0)} lux`;
+      console.log("🚨 Detectado riesgo CRÍTICO - Enviando alerta...");
+      sendWhatsAppAlert(node.name, node.risk, alertMessage);
+    }
+  }, [node.risk, node._backendId]);
+  
+  const handleSendAlert = () => {
+    const alertMessage = `🔴 ALERTA DE INCENDIO\n\nNodo: ${node.name}\nTemperatura: ${node.soilTemperature.toFixed(1)}°C\nHumedad: ${node.soilHumidity.toFixed(1)}%\nIluminación: ${node.light.toFixed(0)} lux`;
+    sendWhatsAppAlert(node.name, node.risk, alertMessage);
+  };
+
   return (
     <section className="fz-detail" data-risk={node.risk}>
       <div className="fz-detail-head">
@@ -110,6 +148,26 @@ function DetailPanel({ node, onClose }) {
           <div className="fz-badge fz-badge-lg" style={{ background: meta.bg, color: meta.textColor }}>
             RIESGO {meta.label}
           </div>
+          {node.risk === "critico" && (
+            <button
+              type="button"
+              className="fz-alert-btn"
+              onClick={handleSendAlert}
+              title="Enviar alerta por WhatsApp"
+              style={{
+                background: "#dc2626",
+                color: "white",
+                border: "none",
+                padding: "8px 12px",
+                borderRadius: "4px",
+                cursor: "pointer",
+                fontSize: "12px",
+                fontWeight: "bold",
+              }}
+            >
+              📱 ENVIAR ALERTA WHATSAPP
+            </button>
+          )}
           <div className="fz-detail-meta">
             <span>BAT.S {node.batterySoil != null ? node.batterySoil + '%' : '—'}</span>
             <span>BAT.L {node.batteryLight != null ? node.batteryLight + '%' : '—'}</span>

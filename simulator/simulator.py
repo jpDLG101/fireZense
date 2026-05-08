@@ -32,50 +32,59 @@ DEFAULT_BASE_URL = "http://localhost:8000"
 API_KEY          = "tu_api_key_local"
 BACKFILL_INTERVAL_SEC = 300  # 5 minutos (igual que el default del simulador)
 
-# Máximo cambio de temperatura por ciclo.
-# Mantiene delta_temp_per_min < 0.5°C/min → sin contribución al score de riesgo.
-MAX_TEMP_STEP = 0.4
+# Tasa máxima de cambio de temperatura, en °C/min.
+# El step real por ciclo = MAX_DELTA_RATE × (interval_sec / 60).
+# Mantiene delta_temp_per_min siempre < 0.5°C/min → sin contribución al score.
+MAX_DELTA_RATE = 0.4  # °C/min
 
 RISK_EMOJI = {"GREEN": "🟢", "YELLOW": "🟡", "ORANGE": "🟠", "RED": "🔴"}
 
 # ─── Perfiles de riesgo (rangos estrictos por nivel) ────────────────────────
 #
 # Los rangos están calibrados para que el motor calculate_fire_risk()
-# devuelva SIEMPRE el nivel correcto dados los valores de suelo + luz:
+# devuelva SIEMPRE el nivel correcto dados los valores de suelo + luz.
 #
-#   GREEN  → score  0-19   (temp baja, humedad alta, lux normal)
-#   YELLOW → score 20-44   (temp elevada >35, humedad baja <30)
-#   ORANGE → score 45-69   (temp alta >45, humedad crítica <30, EC seco)
-#   RED    → score 70+     (temp crítica >60, humedad crítica <20, lux nocturna >100)
+# Thresholds del motor (backend):
+#   Temp     → >35°C +10 / >45°C +25 / >60°C +40
+#   Humedad  → <8%   +15 / <7%   +30
+#   EC       → <200  +10 / <100  +20
+#   ΔT/min   → >0.5  +20 / >2.0  +45
+#   Lux noche→ >50lx +20 / >100lx +35
+#   Lux día  → >50klux +15
+#
+#   GREEN  → score  0-19   (temp ≤35, humedad ≥8%, EC ≥200, lux noche ≤50)
+#   YELLOW → score 20-44   (temp >35, EC <200 → exactamente 20 pts)
+#   ORANGE → score 45-69   (temp >45 +25, humedad <8% +15, EC <100 +20 → 60 pts)
+#   RED    → score 70+     (temp >60 +40, humedad <7% +30, EC <100 +20, lux >50 +20/35)
 
 PROFILES = {
     "green": {
         "soil_temp":  (15.0,  30.0),
-        "moisture":   (40.0,  80.0),
+        "moisture":   (10.0,  16.0),   # rango normal: 8–16%
         "ec":         (250.0, 600.0),
         "lux_day":    (1000.0, 30000.0),
         "lux_night":  (0.0,    5.0),
         "battery":    (70,  100),
     },
     "yellow": {
-        "soil_temp":  (35.0,  44.9),
-        "moisture":   (30.0,  39.9),
-        "ec":         (100.0, 200.0),
+        "soil_temp":  (35.1,  44.9),   # > 35 (strict) → +10 pts garantizado
+        "moisture":   (8.0,   10.0),   # límite inferior del rango normal; ≥ 8 → 0 pts
+        "ec":         (100.0, 199.0),  # < 200 garantizado → +10 pts; ≥ 100 → no +20
         "lux_day":    (30000.0, 50000.0),
-        "lux_night":  (10.0,   50.0),
+        "lux_night":  (10.0,   49.0),  # ≤ 50 → no contribuye (umbral noche > 50lux)
         "battery":    (40,  90),
     },
     "orange": {
         "soil_temp":  (45.0,  59.9),
-        "moisture":   (20.0,  29.9),
-        "ec":         (50.0,  100.0),
+        "moisture":   (7.0,   7.9),    # < 8 garantizado → +15 pts; ≥ 7 → no +30
+        "ec":         (50.0,  99.0),   # < 100 garantizado → +20 pts
         "lux_day":    (40000.0, 60000.0),
-        "lux_night":  (50.0,  100.0),
+        "lux_night":  (20.0,  49.0),   # ≤ 50 → no contribuye; evita que sume +20 y cruce a RED
         "battery":    (30,  70),
     },
     "red": {
         "soil_temp":  (60.0,  80.0),
-        "moisture":   (5.0,   20.0),
+        "moisture":   (1.0,   6.5),    # zona de alerta: activa +30 pts (humedad_critica_<7pct)
         "ec":         (10.0,  50.0),
         "lux_day":    (50000.0, 100000.0),
         "lux_night":  (100.0, 500.0),
@@ -95,13 +104,15 @@ def _r(lo: float, hi: float, decimals: int = 1) -> float:
     return round(random.uniform(lo, hi), decimals)
 
 
-def _smooth_temp(node_id: int, lo: float, hi: float) -> float:
-    """Temperatura suavizada: máximo MAX_TEMP_STEP °C de cambio por ciclo."""
+def _smooth_temp(node_id: int, lo: float, hi: float, interval_sec: int = 300) -> float:
+    """Temperatura suavizada: step limitado a MAX_DELTA_RATE × interval para que
+    delta_temp_per_min nunca supere 0.5 °C/min y no contribuya al score de riesgo."""
+    max_step = MAX_DELTA_RATE * (interval_sec / 60)
     prev = _last_temp.get(node_id)
     if prev is None:
         temp = _r(lo, hi)
     else:
-        temp = _r(max(lo, prev - MAX_TEMP_STEP), min(hi, prev + MAX_TEMP_STEP))
+        temp = _r(max(lo, prev - max_step), min(hi, prev + max_step))
     _last_temp[node_id] = temp
     return temp
 
@@ -111,9 +122,9 @@ def _is_night(dt: datetime) -> bool:
     return local_hour >= 20 or local_hour < 6
 
 
-def gen_soil(profile: dict, battery: int, node_id: int = 0) -> dict:
+def gen_soil(profile: dict, battery: int, node_id: int = 0, interval_sec: int = 300) -> dict:
     return {
-        "temperature": _smooth_temp(node_id, *profile["soil_temp"]),
+        "temperature": _smooth_temp(node_id, *profile["soil_temp"], interval_sec),
         "moisture":    _r(*profile["moisture"]),
         "electricity": _r(*profile["ec"]),
         "battery":     battery,
@@ -210,7 +221,7 @@ def run_continuous(base_url: str, node_id: int, profile: dict,
             ts      = now.isoformat()
             battery = random.randint(*profile["battery"])
 
-            soil_obj  = gen_soil(profile, battery, node_id)
+            soil_obj  = gen_soil(profile, battery, node_id, interval)
             light_obj = gen_light(profile, battery, now)
 
             try:
@@ -264,7 +275,7 @@ def run_backfill(base_url: str, node_id: int, profile: dict,
         ts    = ts_dt.isoformat()
 
         battery   = random.randint(*profile["battery"])
-        soil_obj  = gen_soil(profile, battery, node_id)
+        soil_obj  = gen_soil(profile, battery, node_id, BACKFILL_INTERVAL_SEC)
         light_obj = gen_light(profile, battery, ts_dt)
 
         try:

@@ -78,10 +78,10 @@ flowchart LR
 
     subgraph SCORE["Score acumulado"]
         T["🌡️ Temp suelo\n>35°C +10\n>45°C +25\n>60°C +40"]
-        H["💧 Humedad\n<30% +15\n<20% +30"]
+        H["💧 Humedad\n<8% +15\n<7% +30"]
         EC["⚡ EC\n<200 +10\n<100 +20"]
         DT["📈 ΔT/min\n>0.5 +20\n>2.0 +45"]
-        L["💡 Luz noche\n>50lux +20\n>100lux +35"]
+        L["💡 Luz noche\n>50lux +20\n>100lux +35\nLuz día >50klux +15"]
     end
 
     subgraph NIVEL["Nivel del nodo"]

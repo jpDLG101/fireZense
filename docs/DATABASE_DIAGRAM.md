@@ -152,10 +152,10 @@ flowchart TD
 | Campo | Tipo | Descripción |
 |---|---|---|
 | `node_id` | INTEGER FK | Nodo al que pertenece |
-| `soil_temperature_celsius` | REAL | Normal 15–28°C · alerta >50°C · crítico >60°C |
-| `soil_moisture_percent` | REAL | Normal 50–80% · alerta <30% · crítico <20% |
-| `electrical_conductivity_us_cm` | INTEGER | Normal 100–800 µS/cm · EC baja = suelo seco |
-| `delta_temp_per_min` | REAL | ΔT calculado respecto a lectura anterior |
+| `soil_temperature_celsius` | REAL | Normal 15–28°C · score >35°C (+10) / >45°C (+25) / >60°C (+40) |
+| `soil_moisture_percent` | REAL | Normal 8–16 % · alerta <8% (+15) · crítico <7% (+30) |
+| `electrical_conductivity_us_cm` | INTEGER | Normal ≥200 µS/cm · seco <200 (+10) · muy seco <100 (+20) |
+| `delta_temp_per_min` | REAL | ΔT respecto a lectura anterior · >0.5°C/min (+20) · >2°C/min (+45) |
 | `battery_percent` | INTEGER | Batería del sensor |
 
 ### `fire_risk_events` — Riesgo calculado a nivel nodo

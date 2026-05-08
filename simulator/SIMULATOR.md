@@ -117,43 +117,68 @@ Salida en pantalla:
 
 ## Niveles de riesgo y rangos de datos
 
-Cada nivel genera valores dentro del rango indicado. La **temperatura de suelo se suaviza entre ciclos** (máximo ±0.4 °C por lectura) para evitar que el cálculo de `delta_temp_per_min` produzca picos artificiales que empujen el nivel de riesgo fuera del perfil elegido. Los demás campos (humedad, EC, lux) se generan de forma aleatoria dentro de su rango en cada ciclo.
+Los rangos de cada perfil están calibrados para que el motor `calculate_fire_risk()` devuelva **siempre** el nivel correcto. Los valores límite respetan los umbrales exactos del motor (ver tabla al final de esta sección).
 
-### GREEN — Normal
-| Sensor | Campo | Rango |
-|---|---|---|
-| Suelo | Temperatura | 15 – 30 °C |
-| Suelo | Humedad | 40 – 80 % |
-| Suelo | Conductividad eléctrica | 250 – 600 µS/cm |
-| Luz | Lux (día) | 1,000 – 30,000 lx |
-| Luz | Lux (noche) | 0 – 5 lx |
+**Temperatura de suelo:** se suaviza entre ciclos. La tasa máxima de cambio es `0.4 °C/min`, y el step real por ciclo se escala con el intervalo (`step = 0.4 × interval_sec / 60`). Esto garantiza que `delta_temp_per_min` nunca supere 0.5 °C/min en modo continuo, sin importar el intervalo configurado.
 
-### YELLOW — Riesgo bajo
-| Sensor | Campo | Rango |
-|---|---|---|
-| Suelo | Temperatura | 35 – 44.9 °C |
-| Suelo | Humedad | 30 – 39.9 % |
-| Suelo | Conductividad eléctrica | 100 – 200 µS/cm |
-| Luz | Lux (día) | 30,000 – 50,000 lx |
-| Luz | Lux (noche) | 10 – 50 lx |
+Los demás campos (humedad, EC, lux) se generan aleatoriamente dentro de su rango en cada ciclo.
 
-### ORANGE — Riesgo alto
-| Sensor | Campo | Rango |
-|---|---|---|
-| Suelo | Temperatura | 45 – 59.9 °C |
-| Suelo | Humedad | 20 – 29.9 % |
-| Suelo | Conductividad eléctrica | 50 – 100 µS/cm |
-| Luz | Lux (día) | 40,000 – 60,000 lx |
-| Luz | Lux (noche) | 50 – 100 lx |
+### GREEN — Normal · score esperado: 0
+| Sensor | Campo | Rango | Score |
+|---|---|---|---|
+| Suelo | Temperatura | 15.0 – 30.0 °C | 0 (≤ 35) |
+| Suelo | Humedad | 10.0 – 16.0 % | 0 (≥ 8 %) |
+| Suelo | Conductividad eléctrica | 250 – 600 µS/cm | 0 (≥ 200) |
+| Luz | Lux (día) | 1,000 – 30,000 lx | 0 (≤ 50,000) |
+| Luz | Lux (noche) | 0 – 5 lx | 0 (≤ 50) |
 
-### RED — Incendio posible
-| Sensor | Campo | Rango |
+### YELLOW — Riesgo bajo · score esperado: 20
+| Sensor | Campo | Rango | Score |
+|---|---|---|---|
+| Suelo | Temperatura | 35.1 – 44.9 °C | **+10** (> 35) |
+| Suelo | Humedad | 8.0 – 10.0 % | 0 (≥ 8 %) |
+| Suelo | Conductividad eléctrica | 100 – 199 µS/cm | **+10** (< 200) |
+| Luz | Lux (día) | 30,000 – 50,000 lx | 0 (≤ 50,000) |
+| Luz | Lux (noche) | 10 – 49 lx | 0 (≤ 50) |
+
+### ORANGE — Riesgo alto · score esperado: 60
+| Sensor | Campo | Rango | Score |
+|---|---|---|---|
+| Suelo | Temperatura | 45.0 – 59.9 °C | **+25** (> 45) |
+| Suelo | Humedad | 7.0 – 7.9 % | **+15** (< 8 %) |
+| Suelo | Conductividad eléctrica | 50 – 99 µS/cm | **+20** (< 100) |
+| Luz | Lux (día) | 40,000 – 60,000 lx | 0 (≤ 50,000 mayoría) |
+| Luz | Lux (noche) | 20 – 49 lx | 0 (≤ 50) |
+
+> El lux nocturno de ORANGE se limita a < 50 lx intencionalmente: valores ≥ 50 sumarían +20 pts y empujarían el score de 60 a 80 (RED).
+
+### RED — Incendio posible · score esperado: 110–125
+| Sensor | Campo | Rango | Score |
+|---|---|---|---|
+| Suelo | Temperatura | 60.0 – 80.0 °C | **+40** (> 60) |
+| Suelo | Humedad | 1.0 – 6.5 % | **+30** (< 7 %) |
+| Suelo | Conductividad eléctrica | 10 – 50 µS/cm | **+20** (< 100) |
+| Luz | Lux (día) | 50,000 – 100,000 lx | **+15** (> 50,000) |
+| Luz | Lux (noche) | 100 – 500 lx | **+20/+35** (> 50 / > 100) |
+
+---
+
+### Umbrales del motor de riesgo
+
+| Variable | Condición | Puntos |
 |---|---|---|
-| Suelo | Temperatura | 60 – 80 °C |
-| Suelo | Humedad | 5 – 20 % |
-| Suelo | Conductividad eléctrica | 10 – 50 µS/cm |
-| Luz | Lux (día) | 50,000 – 100,000 lx |
-| Luz | Lux (noche) | 100 – 500 lx |
+| Temperatura suelo | > 35 °C | +10 |
+| Temperatura suelo | > 45 °C | +25 (reemplaza) |
+| Temperatura suelo | > 60 °C | +40 (reemplaza) |
+| Humedad suelo | < 8 % | +15 |
+| Humedad suelo | < 7 % | +30 (reemplaza) |
+| Conductividad eléctrica | < 200 µS/cm | +10 |
+| Conductividad eléctrica | < 100 µS/cm | +20 (reemplaza) |
+| ΔT/min | > 0.5 °C/min | +20 |
+| ΔT/min | > 2.0 °C/min | +45 (reemplaza) |
+| Luz nocturna | > 50 lx | +20 |
+| Luz nocturna | > 100 lx | +35 (reemplaza) |
+| Luz diurna | > 50,000 lx | +15 |
 
 > El simulador detecta automáticamente si el timestamp corresponde a horario nocturno (20:00–06:00 hora México, UTC-6) y ajusta el rango de lux en consecuencia.
 

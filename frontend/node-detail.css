@@ -1,5 +1,21 @@
 /* Detail page-specific styles */
 
+/* ── Chart animations ── */
+@keyframes fzd-chart-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.fzd-chart-area {
+  animation: fzd-chart-fade-in 0.6s ease-out forwards;
+}
+
+/* Dot appears after the line finishes drawing (~0.9s) */
+.fzd-chart-dot {
+  opacity: 0;
+  animation: fzd-chart-fade-in 0.25s ease-out 0.85s forwards;
+}
+
 body[data-page="detail"] {
   overflow-y: auto;
 }

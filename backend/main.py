@@ -21,7 +21,7 @@ API_KEY  = "tu_api_key_local"
 DATABASE = str(Path(__file__).parent.parent / "database" / "monitoreo_forestal.db")
 MEXICO_OFFSET = timedelta(hours=-6)
 RED_REMINDER_MINUTES  = 30
-READ_COOLDOWN_MINUTES = 15
+READ_COOLDOWN_MINUTES = 0  # sin cooldown: nueva alerta en el siguiente ciclo de lectura
 
 # =====================================================================
 # APLICACIÓN
@@ -264,7 +264,7 @@ def should_create_alert(cursor, node_id: int, new_level: str) -> tuple[bool, str
     Reglas:
     - Sin alertas previas          → crear (transition)
     - Nivel cambió                 → crear (transition)
-    - Mismo nivel, ya leída        → crear después de READ_COOLDOWN_MINUTES desde read_at (transition)
+    - Mismo nivel, ya leída        → crear en el siguiente ciclo de lectura (sin cooldown)
     - Mismo nivel, no leída, RED   → crear después de RED_REMINDER_MINUTES desde created_at (reminder)
     - Mismo nivel, no leída, otros → suprimir
     """
@@ -289,11 +289,7 @@ def should_create_alert(cursor, node_id: int, new_level: str) -> tuple[bool, str
         return False, ""
 
     if is_read:
-        ref     = read_at or last_created_at
-        elapsed = _elapsed_minutes(ref)
-        if elapsed is None or elapsed >= READ_COOLDOWN_MINUTES:
-            return True, "transition"
-        return False, ""
+        return True, "transition"
 
     if new_level == "RED":
         elapsed = _elapsed_minutes(last_created_at)

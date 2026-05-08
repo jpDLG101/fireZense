@@ -77,6 +77,19 @@
       const area = `${path} L ${points[points.length - 1].x.toFixed(1)} ${PAD_T + innerH} L ${points[0].x.toFixed(1)} ${PAD_T + innerH} Z`;
       const last = points[points.length - 1];
 
+      const lineRef = React.useRef(null);
+      React.useEffect(() => {
+        const el = lineRef.current;
+        if (!el) return;
+        const len = el.getTotalLength();
+        el.style.strokeDasharray = len;
+        el.style.strokeDashoffset = len;
+        requestAnimationFrame(() => requestAnimationFrame(() => {
+          el.style.transition = "stroke-dashoffset 0.9s cubic-bezier(0.25, 0.46, 0.45, 0.94)";
+          el.style.strokeDashoffset = "0";
+        }));
+      }, []);
+
       return (
         <div className="fzd-metric-chart">
           <div className="fzd-metric-chart-head">
@@ -109,10 +122,10 @@
                 </text>
               );
             })}
-            <path d={area} fill={`url(#${gradId})`} />
-            <path d={path} fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-            <circle cx={last.x} cy={last.y} r="4" fill={color} />
-            <circle cx={last.x} cy={last.y} r="8" fill="none" stroke={color} strokeOpacity="0.35" strokeWidth="1" />
+            <path d={area} fill={`url(#${gradId})`} className="fzd-chart-area" />
+            <path ref={lineRef} d={path} fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+            <circle cx={last.x} cy={last.y} r="4" fill={color} className="fzd-chart-dot" />
+            <circle cx={last.x} cy={last.y} r="8" fill="none" stroke={color} strokeOpacity="0.35" strokeWidth="1" className="fzd-chart-dot" />
           </svg>
         </div>
       );
@@ -164,42 +177,50 @@
       const [node, setNode] = React.useState(null);
       const [alerts, setAlerts] = React.useState([]);
       const [loaded, setLoaded] = React.useState(false);
-      const [dismissedAlerts, setDismissedAlerts] = React.useState(() => {
-        try { return new Set(JSON.parse(localStorage.getItem("fz-dismissed-alerts") || "[]")); }
-        catch (_) { return new Set(); }
-      });
+      const [refreshCount, setRefreshCount] = React.useState(0);
+      const [dismissedAlerts, setDismissedAlerts] = React.useState(() => new Set());
       const [alertPage, setAlertPage] = React.useState(1);
 
       const handleDismiss = (id) => {
-        setDismissedAlerts((prev) => {
-          const next = new Set(prev);
-          next.add(id);
-          localStorage.setItem("fz-dismissed-alerts", JSON.stringify([...next]));
-          return next;
-        });
+        window.fireZenseAPI.dismissAlert(id).catch(() => {});
+        setDismissedAlerts((prev) => { const n = new Set(prev); n.add(id); return n; });
       };
 
       const handleDismissAll = () => {
+        window.fireZenseAPI.dismissAllAlerts().catch(() => {});
         setDismissedAlerts((prev) => {
-          const next = new Set(prev);
-          alerts.forEach((a) => next.add(a.id));
-          localStorage.setItem("fz-dismissed-alerts", JSON.stringify([...next]));
-          return next;
+          const n = new Set(prev);
+          alerts.forEach((a) => n.add(a._backendId));
+          return n;
         });
       };
 
       React.useEffect(() => {
-        (async () => {
-          const [nodes, allAlerts] = await Promise.all([
-            window.fireZenseAPI.getNodes(),
-            window.fireZenseAPI.getAlerts(),
-          ]);
-          const id = getNodeId();
-          const n = nodes.find((x) => x.id === id) || nodes[0];
-          setNode(n);
-          setAlerts(allAlerts.filter((a) => a.nodoId === n.id));
-          setLoaded(true);
-        })();
+        let alive = true;
+
+        async function load(initial) {
+          try {
+            const [nodes, allAlerts] = await Promise.all([
+              window.fireZenseAPI.getNodes(true),
+              window.fireZenseAPI.getAlerts(true),
+            ]);
+            if (!alive) return;
+            const id = getNodeId();
+            const n = nodes.find((x) => x.id === id) || nodes[0];
+            if (n) {
+              setNode(n);
+              setAlerts(allAlerts.filter((a) => a.nodoId === n.id));
+            }
+            if (initial) setLoaded(true);
+            else setRefreshCount((c) => c + 1);
+          } catch (e) {
+            if (initial && alive) setLoaded(true);
+          }
+        }
+
+        load(true);
+        const interval = setInterval(() => load(false), 60000);
+        return () => { alive = false; clearInterval(interval); };
       }, []);
 
       if (!loaded || !node) {
@@ -263,7 +284,7 @@
                 <p>Lectura cada hora · transmitido vía LoRaWAN · zona horaria UTC−6</p>
               </div>
             </div>
-            <FourCharts history={node.history} />
+            <FourCharts key={refreshCount} history={node.history} />
           </section>
 
           <section className="fzd-row">

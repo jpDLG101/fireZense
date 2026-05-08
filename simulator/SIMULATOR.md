@@ -129,7 +129,7 @@ Los demás campos (humedad, EC, lux) se generan aleatoriamente dentro de su rang
 | Suelo | Temperatura | 15.0 – 30.0 °C | 0 (≤ 35) |
 | Suelo | Humedad | 10.0 – 16.0 % | 0 (≥ 8 %) |
 | Suelo | Conductividad eléctrica | 250 – 600 µS/cm | 0 (≥ 200) |
-| Luz | Lux (día) | 1,000 – 30,000 lx | 0 (≤ 50,000) |
+| Luz | Lux (día) | 1,000 – 12,000 lx | 0 (≤ 50,000) — bajo dosel denso |
 | Luz | Lux (noche) | 0 – 5 lx | 0 (≤ 50) |
 
 ### YELLOW — Riesgo bajo · score esperado: 20
@@ -138,7 +138,7 @@ Los demás campos (humedad, EC, lux) se generan aleatoriamente dentro de su rang
 | Suelo | Temperatura | 35.1 – 44.9 °C | **+10** (> 35) |
 | Suelo | Humedad | 8.0 – 10.0 % | 0 (≥ 8 %) |
 | Suelo | Conductividad eléctrica | 100 – 199 µS/cm | **+10** (< 200) |
-| Luz | Lux (día) | 30,000 – 50,000 lx | 0 (≤ 50,000) |
+| Luz | Lux (día) | 12,000 – 25,000 lx | 0 (≤ 50,000) — dosel ralo / claro forestal |
 | Luz | Lux (noche) | 10 – 49 lx | 0 (≤ 50) |
 
 ### ORANGE — Riesgo alto · score esperado: 60
@@ -147,18 +147,18 @@ Los demás campos (humedad, EC, lux) se generan aleatoriamente dentro de su rang
 | Suelo | Temperatura | 45.0 – 59.9 °C | **+25** (> 45) |
 | Suelo | Humedad | 7.0 – 7.9 % | **+15** (< 8 %) |
 | Suelo | Conductividad eléctrica | 50 – 99 µS/cm | **+20** (< 100) |
-| Luz | Lux (día) | 40,000 – 60,000 lx | 0 (≤ 50,000 mayoría) |
+| Luz | Lux (día) | 20,000 – 45,000 lx | 0 (< 50,000) — zona abierta/alta exposición |
 | Luz | Lux (noche) | 20 – 49 lx | 0 (≤ 50) |
 
-> El lux nocturno de ORANGE se limita a < 50 lx intencionalmente: valores ≥ 50 sumarían +20 pts y empujarían el score de 60 a 80 (RED).
+> El lux diurno de ORANGE se mantiene bajo 50,000 lx intencionalmente (no suma pts), y el nocturno bajo 50 lx para no cruzar a RED.
 
-### RED — Incendio posible · score esperado: 110–125
+### RED — Incendio posible · score esperado: 90–105
 | Sensor | Campo | Rango | Score |
 |---|---|---|---|
 | Suelo | Temperatura | 60.0 – 80.0 °C | **+40** (> 60) |
 | Suelo | Humedad | 1.0 – 6.5 % | **+30** (< 7 %) |
 | Suelo | Conductividad eléctrica | 10 – 50 µS/cm | **+20** (< 100) |
-| Luz | Lux (día) | 50,000 – 100,000 lx | **+15** (> 50,000) |
+| Luz | Lux (día) | 45,000 – 75,000 lx | **0/+15** (> 50,000) — sol directo intenso |
 | Luz | Lux (noche) | 100 – 500 lx | **+20/+35** (> 50 / > 100) |
 
 ---

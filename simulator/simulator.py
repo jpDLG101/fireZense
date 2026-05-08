@@ -62,7 +62,7 @@ PROFILES = {
         "soil_temp":  (15.0,  30.0),
         "moisture":   (10.0,  16.0),   # rango normal: 8–16%
         "ec":         (250.0, 600.0),
-        "lux_day":    (1000.0, 30000.0),
+        "lux_day":    (1000.0, 12000.0),   # bajo dosel forestal denso
         "lux_night":  (0.0,    5.0),
         "battery":    (70,  100),
     },
@@ -70,7 +70,7 @@ PROFILES = {
         "soil_temp":  (35.1,  44.9),   # > 35 (strict) → +10 pts garantizado
         "moisture":   (8.0,   10.0),   # límite inferior del rango normal; ≥ 8 → 0 pts
         "ec":         (100.0, 199.0),  # < 200 garantizado → +10 pts; ≥ 100 → no +20
-        "lux_day":    (30000.0, 50000.0),
+        "lux_day":    (12000.0, 25000.0),  # dosel ralo / claro forestal
         "lux_night":  (10.0,   49.0),  # ≤ 50 → no contribuye (umbral noche > 50lux)
         "battery":    (40,  90),
     },
@@ -78,7 +78,7 @@ PROFILES = {
         "soil_temp":  (45.0,  59.9),
         "moisture":   (7.0,   7.9),    # < 8 garantizado → +15 pts; ≥ 7 → no +30
         "ec":         (50.0,  99.0),   # < 100 garantizado → +20 pts
-        "lux_day":    (40000.0, 60000.0),
+        "lux_day":    (20000.0, 45000.0),  # zona abierta / exposición alta; < 50k → 0 pts (no afecta score)
         "lux_night":  (20.0,  49.0),   # ≤ 50 → no contribuye; evita que sume +20 y cruce a RED
         "battery":    (30,  70),
     },
@@ -86,7 +86,7 @@ PROFILES = {
         "soil_temp":  (60.0,  80.0),
         "moisture":   (1.0,   6.5),    # zona de alerta: activa +30 pts (humedad_critica_<7pct)
         "ec":         (10.0,  50.0),
-        "lux_day":    (50000.0, 100000.0),
+        "lux_day":    (45000.0, 75000.0),  # sol directo intenso; > 50k → +15 pts
         "lux_night":  (100.0, 500.0),
         "battery":    (10,  50),
     },

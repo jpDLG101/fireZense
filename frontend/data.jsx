@@ -151,7 +151,7 @@ async function fetchAlerts(nodes) {
       _backendId:  a.id,
       tipo,
       titulo:      alertTitle(a.alert_type),
-      mensaje:     a.message.replace(/^[🟠🔴]\s*/, ""),
+      mensaje:     a.message.replace(/^(\[Recordatorio\]\s*)?[🟠🔴]\s*/u, "$1"),
       nodoId:      n.id   || `NODE-${String(a.node_id).padStart(3, "0")}`,
       nodoNombre:  n.name || "Nodo",
       area:        n.area || "",

@@ -362,18 +362,23 @@ body[data-page="detail"] {
   line-height: 1.45;
 }
 .fzd-alert-dismiss {
-  background: none;
-  border: none;
+  background: rgba(255,255,255,0.12);
+  border: 1px solid rgba(255,255,255,0.25);
+  border-radius: 4px;
   cursor: pointer;
-  font-size: 13px;
+  font-size: 14px;
+  font-weight: 600;
   line-height: 1;
-  padding: 2px 5px;
-  opacity: 0.35;
-  transition: opacity .15s;
-  color: inherit;
+  padding: 3px 7px;
+  color: rgba(255,255,255,0.75);
+  transition: background .15s, color .15s, border-color .15s;
   flex-shrink: 0;
 }
-.fzd-alert-dismiss:hover { opacity: 1; }
+.fzd-alert-dismiss:hover {
+  background: rgba(255,255,255,0.25);
+  border-color: rgba(255,255,255,0.5);
+  color: #fff;
+}
 .fzd-pagination {
   display: flex;
   align-items: center;

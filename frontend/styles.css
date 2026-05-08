@@ -642,18 +642,23 @@ button { font-family: inherit; cursor: pointer; }
   display: flex; align-items: center; gap: 8px;
 }
 .fz-alert-dismiss {
-  background: none;
-  border: none;
+  background: rgba(255,255,255,0.12);
+  border: 1px solid rgba(255,255,255,0.25);
+  border-radius: 4px;
   cursor: pointer;
-  font-size: 13px;
+  font-size: 14px;
+  font-weight: 600;
   line-height: 1;
-  padding: 3px 5px;
-  opacity: 0.35;
-  transition: opacity .15s;
-  color: inherit;
+  padding: 3px 7px;
+  color: rgba(255,255,255,0.75);
+  transition: background .15s, color .15s, border-color .15s;
   flex-shrink: 0;
 }
-.fz-alert-dismiss:hover { opacity: 1; }
+.fz-alert-dismiss:hover {
+  background: rgba(255,255,255,0.25);
+  border-color: rgba(255,255,255,0.5);
+  color: #fff;
+}
 .fz-alerts-actions {
   padding: 8px 12px;
   border-bottom: 1px solid var(--fz-line-soft);

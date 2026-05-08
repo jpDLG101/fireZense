@@ -42,6 +42,21 @@
       return ticks;
     }
 
+    function fmtLastSeen(isoTs) {
+      if (!isoTs) return "—";
+      const d = new Date(isoTs);
+      const mins = Math.round((Date.now() - d.getTime()) / 60000);
+      if (mins < 2)  return "ahora";
+      if (mins < 60) return `hace ${mins} min`;
+      const hh = String(d.getHours()).padStart(2, "0");
+      const mm = String(d.getMinutes()).padStart(2, "0");
+      const today = new Date();
+      if (d.toDateString() === today.toDateString()) return `${hh}:${mm}`;
+      const dd = String(d.getDate()).padStart(2, "0");
+      const mo = String(d.getMonth() + 1).padStart(2, "0");
+      return `${dd}/${mo} ${hh}:${mm}`;
+    }
+
     function fmtTick(v, unit) {
       if (unit === "lux" && Math.abs(v) >= 1000) return (v / 1000).toFixed(1) + "k";
       if (unit === "dS/m") return v.toFixed(2);
@@ -265,7 +280,7 @@
               <div className="fzd-hero-state">
                 <div><b>{node.batterySoil != null ? `${node.batterySoil}%` : "—"}</b><span>BAT. SUELO</span></div>
                 <div><b>{node.batteryLight != null ? `${node.batteryLight}%` : "—"}</b><span>BAT. LUZ</span></div>
-                <div><b>{node.lastSeen} min</b><span>ÚLT. VISTO</span></div>
+                <div><b>{fmtLastSeen(node.lastSeenIso)}</b><span>ÚLT. LECTURA</span></div>
               </div>
             </div>
           </section>

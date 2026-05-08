@@ -216,7 +216,7 @@ Página completa accesible desde `/nodo.html?id=NODE-001`. **Auto-refresco cada 
 
 | Componente | Descripción |
 |---|---|
-| Hero + estado | Nombre, área, coordenadas, nivel de riesgo, baterías, último visto |
+| Hero + estado | Nombre, área, coordenadas, nivel de riesgo, baterías, última lectura. El campo "ÚLT. LECTURA" muestra `ahora` (<2 min), `hace N min` (<60 min), `HH:MM` (hoy) o `DD/MM HH:MM` (días anteriores) |
 | 4 métricas grandes | Temp. suelo, Humedad, Iluminación, Electroconductividad (valor actual + contexto) |
 | Series temporales 24h | 4 charts SVG en grid 2×2. Al montar (carga inicial y cada refresco automático) cada línea se anima con `stroke-dashoffset` desde la longitud total del path hasta 0 (~0.9 s). El área aparece con fade-in y el punto final aparece al terminar el trazado. |
 | Tendencias por variable | 4 sparklines con rango min→max de las últimas 24h |
